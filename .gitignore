@@ -1,0 +1,8 @@
+.vscode/
+__pycache__/
+model_record/
+runs/
+百香果照片集/
+封存/
+yolo26n.pt 
+yolo26n-cls.pt
