@@ -1,0 +1,30 @@
+schema_version: 1
+dataset_id: pf-YYYYMMDD-v001
+frozen_at: YYYY-MM-DD
+source:
+  system: PassionFruit_IoT_hardware
+  capture_mode: three_station_stopped_capture
+  images_per_fruit: 3
+  storage_uri: null
+counts:
+  fruits: 0
+  images: 0
+labels:
+  high_medium: 0
+  low: 0
+  processing: 0
+  discard: 0
+splits:
+  train:
+    fruits: 0
+    images: 0
+  valid:
+    fruits: 0
+    images: 0
+  test:
+    fruits: 0
+    images: 0
+checksum_manifest:
+  algorithm: sha256
+  path: null
+notes: null

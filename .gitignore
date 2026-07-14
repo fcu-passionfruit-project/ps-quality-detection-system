@@ -1,9 +1,32 @@
 .vscode/
-__pycache__/
 .venv/
+venv/
+__pycache__/
+*.py[cod]
+*.cache
+
+# Local datasets and experiment outputs
 model_record/
 runs/
 百香果照片集/
 封存/
-yolo26n.pt 
-yolo26n-cls.pt
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tif
+*.tiff
+*.mp4
+*.mov
+*.avi
+
+# Base weights and checkpoints are local-only.
+*.pt
+!main/stage1.pt
+!main/stage2_1.pt
+!main/stage2_2.pt
+
+# Track only dataset documentation and manifests.
+datasets/*
+!datasets/README.md
+!datasets/manifest.example.yaml
