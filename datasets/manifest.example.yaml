@@ -10,20 +10,12 @@ counts:
   fruits: 0
   images: 0
 labels:
-  high_medium: 0
+  high: 0
+  medium: 0
   low: 0
   processing: 0
-  discard: 0
-splits:
-  train:
-    fruits: 0
-    images: 0
-  valid:
-    fruits: 0
-    images: 0
-  test:
-    fruits: 0
-    images: 0
+split_status: pending_roboflow
+splits: null
 checksum_manifest:
   algorithm: sha256
   path: null

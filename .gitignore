@@ -6,6 +6,7 @@ __pycache__/
 *.cache
 
 # Local datasets and experiment outputs
+dataset/
 model_record/
 runs/
 百香果照片集/
@@ -30,3 +31,4 @@ runs/
 datasets/*
 !datasets/README.md
 !datasets/manifest.example.yaml
+!datasets/*.yaml

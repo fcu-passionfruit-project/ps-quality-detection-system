@@ -45,7 +45,7 @@ imgsz=320                            |
         彙整三站特徵、confidence 與模型版本
                         |
                         v
-       決策層：high_medium / low / processing / discard
+       決策層：high / medium / low / processing
                         |
                         v
         Django classify_fruit -> ESP32 -> MG996R
@@ -162,7 +162,7 @@ python main.py
 
 ## Dataset 交接規則
 
-原始照片、增強照片、Roboflow 匯出資料與 train／valid／test 影像不進 Git。資料應保存於團隊共用儲存空間，模型 repository 只追蹤 manifest：
+原始照片、增強照片、Roboflow 匯出資料與 train／valid／test 影像不進 Git。本機原始快照實體保存於 `D:\passion-fruit-datasets\`，repository 根目錄的 ignored `dataset/` junction 指向該位置；模型 repository 只追蹤 `datasets/` 內的 manifest：
 
 ```text
 dataset_id
@@ -174,7 +174,9 @@ train / valid / test 切分
 儲存位置與 checksum manifest
 ```
 
-範本位於 `datasets/manifest.example.yaml`。每份準確率報告必須同時記錄 dataset ID、模型 manifest 版本與 Git commit，避免同一個模型名稱對應到不同資料。
+目前 `pf-20260716-v001` 保存 `2026-07-16` 三站採集的 `327` 顆百香果與 `981` 張照片，尚未建立 train／valid／test，由後續 Roboflow 流程負責切分。其 manifest 位於 `datasets/pf-20260716-v001.yaml`，原始快照可由 `dataset/pf-20260716-v001/` 存取。
+
+範本位於 `datasets/manifest.example.yaml`。每份準確率報告必須同時記錄 dataset ID、模型 manifest 版本與 Git commit，避免同一個模型名稱對應到不同資料。`dataset/` junction 只提供本機存取，不是第二份備份；凍結快照仍須上傳到 Roboflow 或團隊共用儲存空間。
 
 ## 未來與硬體系統整合
 
@@ -186,6 +188,7 @@ train / valid / test 切分
 
 - 使用 feature branch 與 pull request 協作，不直接覆蓋組員的 `main`。
 - 不提交 `.venv/`、照片、dataset、`runs/`、cache 或預測輸出。
+- 不提交 ignored `dataset/` junction 或其指向的原始照片；只提交 `datasets/*.yaml` manifest。
 - 不提交每次訓練的 `last.pt` 與歷史 checkpoint。
 - 正式三個權重使用 Git LFS；更換權重時必須同步更新 `models/manifest.yaml`、SHA-256 與驗證結果。
 - 若沒有 Git LFS，clone 後只會取得 pointer，需先安裝 Git LFS 再執行 `git lfs pull`。
