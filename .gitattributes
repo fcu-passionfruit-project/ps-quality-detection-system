@@ -1,3 +1,2 @@
-main/stage1.pt filter=lfs diff=lfs merge=lfs -text
-main/stage2_1.pt filter=lfs diff=lfs merge=lfs -text
-main/stage2_2.pt filter=lfs diff=lfs merge=lfs -text
+# Prototype weights are local-only. Add explicit Git LFS rules here only after
+# a replacement model has passed validation and is approved for release.

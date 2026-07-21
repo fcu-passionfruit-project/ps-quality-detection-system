@@ -1,44 +1,57 @@
 schema_version: 1
-bundle_version: prototype-2026-07-14
+bundle_version: unbundled-2026-07-22
+bundle_status: no_distributed_weights
 source_commit: null
 runtime:
   python: 3.10.20
   ultralytics: 8.4.59
   torch: 2.12.0
-models:
+models: {}
+planned_models:
   stage1_roi:
-    path: main/stage1.pt
+    status: pending_training_and_validation
+    architecture: yolo26n
     task: detect
     imgsz: 640
     classes:
-      0: PF
-    sha256: 7f99c6d6e696bab4df69c37f2c51e0efe976f057432b573eb7ce48f22b86d35c
+      - PF
   stage2_color:
-    path: main/stage2_1.pt
+    status: pending_training_and_validation
+    architecture: yolo26n-cls
     task: classify
     imgsz: 320
     classes:
-      0: bad_color
-      1: good_color
-    sha256: 8c5ff1eb4bf9b52e1dbfe007b1d577a8ad2da65cb6f0d5716f4a265f1479fefc
+      - bad_color
+      - good_color
   stage2_wrinkle:
-    path: main/stage2_2.pt
+    status: pending_training_and_validation
+    architecture: yolo26n-cls
     task: classify
     imgsz: 448
     classes:
-      0: slight_wrinkle
-      1: smooth
-      2: wrinkle
-    sha256: a0732b558cd2cc33d9cc83fd8647cd28adfa89cb17b4115ddb398dfd6c717f8d
-planned_models:
+      - smooth
+      - wrinkle
   local_defect_detection:
-    status: dataset_incomplete
+    status: pending_roboflow_annotation_and_validation
+    architecture: yolo26n
     task: detect
     imgsz: 640
-    initial_classes:
-      - insect_bite
-      - concentric_rot
+    candidate_classes:
+      - anthracnose
+      - insect_track
       - abrasion
+      - insect_bite
+feature_contract:
+  roi_area_ratio:
+    formula: bbox_width * bbox_height / (image_width * image_height)
+    meaning: relative fruit bounding-box area within each original photo
+    real_world_area: false
+    per_station_fields:
+      - station_01_roi_area_ratio
+      - station_02_roi_area_ratio
+      - station_03_roi_area_ratio
 notes:
-  - Do not infer wrinkle meaning from numeric indexes; use the class names embedded in the weight.
-  - Anthracnose and insect-track datasets are not sufficient for a production model.
+  - No model weights are distributed by the repository at this time.
+  - Candidate class indexes remain unset until Roboflow annotation and data.yaml are approved.
+  - The frozen snapshot contains 981 images at 1080 x 1920, with 327 images per station.
+  - Anthracnose is a hard-veto feature that maps to processing after its detection threshold is validated.

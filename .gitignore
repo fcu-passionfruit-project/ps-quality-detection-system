@@ -23,9 +23,6 @@ runs/
 
 # Base weights and checkpoints are local-only.
 *.pt
-!main/stage1.pt
-!main/stage2_1.pt
-!main/stage2_2.pt
 
 # Track only dataset documentation and manifests.
 datasets/*

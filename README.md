@@ -39,7 +39,7 @@ imgsz=320                            |
                         |
                         v
          局部瑕疵 multi-class YOLO Detect（規劃中）
-         蟲咬／猴痘狀腐爛／擦傷，imgsz=640
+         炭疽病／畫圖蟲／擦傷／蟲咬，imgsz=640
                         |
                         v
         彙整三站特徵、confidence 與模型版本
@@ -54,12 +54,12 @@ imgsz=320                            |
 ### Stage 1：ROI 定位
 
 - 任務：從包含軌道背景的原始照片找出百香果 bounding box。
-- 模型類型：YOLO Detect。
+- 目標模型：YOLO26n Detect。
 - 輸入尺寸：`640`。
-- 目前正式權重：`main/stage1.pt`。
-- 目前類別：`PF`。
+- 目標類別：`PF`。
+- 目前沒有隨 repository 發布、可交付硬體端的正式權重。
 
-Stage 1 只負責定位。裁切時必須回到手機上傳的原始解析度照片，使用偵測座標取得高細節 ROI，不可從已縮小的預覽圖再次裁切。
+Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的原始解析度照片，取得高細節 ROI，不可從已縮小的預覽圖再次裁切。每站另保存 `roi_area_ratio = bbox_width × bbox_height / (image_width × image_height)`；它代表百香果 bounding box 在該張照片中的面積比例，供 XGBoost 理解相對大小，不是平方公分或真實表面積。正式欄位為 `station_01_roi_area_ratio`、`station_02_roi_area_ratio`、`station_03_roi_area_ratio`。
 
 ### OpenCV 中介層
 
@@ -71,31 +71,32 @@ Stage 1 只負責定位。裁切時必須回到手機上傳的原始解析度照
 
 ### Stage 2-1：顏色
 
-- 模型類型：YOLO Classification。
+- 目標模型：YOLO26n Classification。
 - 輸入尺寸：`320`。
-- 目前正式權重：`main/stage2_1.pt`。
-- 目前權重類別：`bad_color`、`good_color`。
+- 目標類別：`bad_color`、`good_color`。
+- 目前沒有隨 repository 發布、可交付硬體端的正式權重。
 - 顏色是模型判斷依據，訓練時不得啟用 `hsv_h`、`hsv_s`、`hsv_v` 色彩擾動。
 
 ### Stage 2-2：皺褶
 
-- 模型類型：YOLO Classification。
+- 目標模型：YOLO26n Classification。
 - 輸入尺寸：`448`。
-- 目前正式權重：`main/stage2_2.pt`。
 - 輸入：ROI 經灰階與 CLAHE 處理後，再轉回模型可接受的三通道影像。
-- 目前權重類別順序：`slight_wrinkle`、`smooth`、`wrinkle`。
+- 正式目標類別：`smooth`、`wrinkle` 二分類。
+- 目前沒有隨 repository 發布、可交付硬體端的正式權重。
 
-Notion 的早期設計曾以 `0／1／2` 表示「飽滿／輕微／嚴重」，但目前權重的 class index 順序不同。程式必須讀取權重內的 class name，不可自行硬編碼舊數字對照。
+先前的三分類 prototype 不再作為正式規格。新模型仍必須從權重讀取 class name，並在 manifest 固定 index 對照，不可由程式自行猜測數字語意。
 
 ### Stage 2-3：局部瑕疵
 
 規劃使用單一 multi-class YOLO Detect，同一次推論辨識多種局部瑕疵，並以 bounding box 或 mask 面積量化嚴重程度。預定優先類別為：
 
-- 蟲咬。
-- 猴痘狀同心圓腐爛。
-- 大面積擦傷。
+- `anthracnose`：炭疽病。
+- `insect_track`：畫圖蟲。
+- `abrasion`：擦傷。
+- `insect_bite`：蟲咬。
 
-炭疽病與蟲爬白痕目前缺少足夠資料，不得在文件或系統中宣稱已完成。相近瑕疵應先集中到同一個多類別模型，避免「每個瑕疵各一個模型」造成重複 backbone、VRAM 浪費與 false positive 疊加。
+上述四種是同學家實地確認會遇到的局部瑕疵；猴痘、芽種不良等目前資料為零，不納入本版規劃。Roboflow 尚未完成 bounding-box 標註與資料量驗證，因此不得固定數字 class index，也不得在文件或系統中宣稱模型已完成。四種瑕疵先集中到同一個多類別模型，避免「每個瑕疵各一個模型」造成重複 backbone、VRAM 浪費與 false positive 疊加。
 
 ## 推論與效能策略
 
@@ -108,7 +109,7 @@ Notion 的早期設計曾以 `0／1／2` 表示「飽滿／輕微／嚴重」，
 
 ## 目前已實作範圍
 
-`main/` 是獨立於 Django 的 Tkinter 驗證工具，目前可以：
+`main/` 是獨立於 Django 的 Tkinter prototype 驗證工具；只有在開發者自行準備本機 `stage1.pt`、`stage2_1.pt`、`stage2_2.pt` 時，才可執行下列既有流程：
 
 1. 選擇一張本機百香果照片。
 2. 使用 Stage 1 找出第一個百香果 ROI。
@@ -126,13 +127,6 @@ Notion 的早期設計曾以 `0／1／2` 表示「飽滿／輕微／嚴重」，
 
 ## Windows 執行方式
 
-先安裝 Git LFS，clone 後取得正式權重：
-
-```powershell
-git lfs install
-git lfs pull
-```
-
 建立 Python `3.10.20` 環境並安裝模型依賴：
 
 ```powershell
@@ -141,7 +135,7 @@ conda activate pf_detection_env
 python -m pip install -r requirements.txt
 ```
 
-目前 `main.py` 使用相對模型路徑，因此必須從 `main/` 啟動：
+repository 目前不提供 `.pt` 權重。若只為本機 prototype 驗證，請自行把三個既有權重放在 `main/`；它們受 `.gitignore` 排除，不得加入 commit。`main.py` 使用相對模型路徑，因此必須從 `main/` 啟動：
 
 ```powershell
 cd main
@@ -152,13 +146,9 @@ python main.py
 
 ## 正式權重
 
-| 階段 | 路徑 | Task | `imgsz` | SHA-256 |
-|---|---|---|---:|---|
-| ROI | `main/stage1.pt` | detect | `640` | `7f99c6d6e696bab4df69c37f2c51e0efe976f057432b573eb7ce48f22b86d35c` |
-| 顏色 | `main/stage2_1.pt` | classify | `320` | `8c5ff1eb4bf9b52e1dbfe007b1d577a8ad2da65cb6f0d5716f4a265f1479fefc` |
-| 皺褶 | `main/stage2_2.pt` | classify | `448` | `a0732b558cd2cc33d9cc83fd8647cd28adfa89cb17b4115ddb398dfd6c717f8d` |
+目前沒有隨 repository 發布的正式權重。原本的三個 prototype 已撤除 Git 追蹤，只保留在需要它們的開發者本機。
 
-機器可讀資訊位於 `models/manifest.yaml`。只有通過驗證並準備交付硬體端的正式權重可放在 `main/`，且必須由 Git LFS 追蹤；`runs/` 內的 `last.pt`、實驗 checkpoint 與基礎 YOLO 權重不得提交。
+機器可讀規劃位於 `models/manifest.yaml`。未來只有通過準確率、類別對照、SHA-256 與硬體整合驗收的正式權重，才可重新設定 Git LFS 規則並提交；`runs/` 內的 `last.pt`、實驗 checkpoint、prototype 與基礎 YOLO 權重不得提交。
 
 ## Dataset 交接規則
 
@@ -174,7 +164,7 @@ train / valid / test 切分
 儲存位置與 checksum manifest
 ```
 
-目前 `pf-20260716-v001` 保存 `2026-07-16` 三站採集的 `327` 顆百香果與 `981` 張照片，尚未建立 train／valid／test，由後續 Roboflow 流程負責切分。其 manifest 位於 `datasets/pf-20260716-v001.yaml`，原始快照可由 `dataset/pf-20260716-v001/` 存取。
+目前 `pf-20260716-v001` 保存 `2026-07-16` 三站採集的 `327` 顆百香果與 `981` 張照片；三站各 `327` 張，所有照片皆為 `1080 × 1920`。尚未建立 train／valid／test，由後續 Roboflow 流程負責切分。其 manifest 位於 `datasets/pf-20260716-v001.yaml`，原始快照可由 `dataset/pf-20260716-v001/` 存取。
 
 範本位於 `datasets/manifest.example.yaml`。每份準確率報告必須同時記錄 dataset ID、模型 manifest 版本與 Git commit，避免同一個模型名稱對應到不同資料。`dataset/` junction 只提供本機存取，不是第二份備份；凍結快照仍須上傳到 Roboflow 或團隊共用儲存空間。
 
@@ -182,7 +172,7 @@ train / valid / test 切分
 
 模型 repository 將提供唯一的檢測實作；硬體 repository 只建立薄 Django adapter。開發期間兩個 repository 放在同一層，未來可用 editable install 連接，但目前不使用 Git submodule。
 
-檢測層預期回傳每站的 ROI、顏色、皺褶、局部瑕疵、confidence、耗時與模型 bundle version。模型載入失敗、找不到百香果或信心不足時，必須回傳明確原因並保留人工覆核，不得自行猜測分類或直接控制 ESP32。
+檢測層預期回傳每站的 ROI、`roi_area_ratio`、顏色、二分類皺褶、四種局部瑕疵面積比例、confidence、耗時與模型 bundle version。經有效門檻判定有炭疽病時，Decision Layer 直接輸出加工 `processing`；其餘果實才交由 XGBoost 四分類。模型載入失敗、找不到百香果或信心不足時，必須回傳明確原因並保留人工覆核，不得自行猜測分類或直接控制 ESP32。
 
 ## Git 規則
 
@@ -190,5 +180,4 @@ train / valid / test 切分
 - 不提交 `.venv/`、照片、dataset、`runs/`、cache 或預測輸出。
 - 不提交 ignored `dataset/` junction 或其指向的原始照片；只提交 `datasets/*.yaml` manifest。
 - 不提交每次訓練的 `last.pt` 與歷史 checkpoint。
-- 正式三個權重使用 Git LFS；更換權重時必須同步更新 `models/manifest.yaml`、SHA-256 與驗證結果。
-- 若沒有 Git LFS，clone 後只會取得 pointer，需先安裝 Git LFS 再執行 `git lfs pull`。
+- Prototype 與未驗收權重一律只留本機；未來正式權重必須經團隊核准後才加入明確的 Git LFS 規則，並同步更新 `models/manifest.yaml`、SHA-256 與驗證結果。
