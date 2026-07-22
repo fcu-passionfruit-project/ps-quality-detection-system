@@ -33,8 +33,8 @@ planned_models:
       - wrinkle
   local_defect_detection:
     status: pending_roboflow_annotation_and_validation
-    architecture: yolo26n
-    task: detect
+    architecture: yolo26n-seg
+    task: segment
     imgsz: 640
     candidate_classes:
       - anthracnose
@@ -50,8 +50,18 @@ feature_contract:
       - station_01_roi_area_ratio
       - station_02_roi_area_ratio
       - station_03_roi_area_ratio
+  defect_area_ratio:
+    formula: defect_mask_pixels / fruit_roi_pixels
+    meaning: visible defect area relative to the fruit ROI at each station
+    range: [0.0, 1.0]
+    field_pattern: "station_{01|02|03}_{anthracnose|insect_track|abrasion|insect_bite}_area_ratio"
+    field_count: 12
+    no_detection: 0
+    invalid_roi_or_inference: null
+    formal_source: segmentation_mask
+    bbox_proxy_suffix: _bbox_area_ratio
 notes:
   - No model weights are distributed by the repository at this time.
-  - Candidate class indexes remain unset until Roboflow annotation and data.yaml are approved.
+  - Candidate class indexes remain unset until Roboflow mask annotation and data.yaml are approved.
   - The frozen snapshot contains 981 images at 1080 x 1920, with 327 images per station.
-  - Anthracnose is a hard-veto feature that maps to processing after its detection threshold is validated.
+  - Anthracnose is not a hard-veto feature; all valid fruit rows proceed to XGBoost four-class grading.

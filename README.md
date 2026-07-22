@@ -38,7 +38,7 @@ imgsz=320                            |
           +-------------+-------------+
                         |
                         v
-         局部瑕疵 multi-class YOLO Detect（規劃中）
+         局部瑕疵 multi-class YOLO Segment（規劃中）
          炭疽病／畫圖蟲／擦傷／蟲咬，imgsz=640
                         |
                         v
@@ -89,14 +89,16 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 
 ### Stage 2-3：局部瑕疵
 
-規劃使用單一 multi-class YOLO Detect，同一次推論辨識多種局部瑕疵，並以 bounding box 或 mask 面積量化嚴重程度。預定優先類別為：
+正式目標為單一 multi-class YOLO26n-seg，同一次推論辨識多種局部瑕疵，並以 segmentation mask 面積量化嚴重程度。預定類別為：
 
 - `anthracnose`：炭疽病。
 - `insect_track`：畫圖蟲。
 - `abrasion`：擦傷。
 - `insect_bite`：蟲咬。
 
-上述四種是同學家實地確認會遇到的局部瑕疵；猴痘、芽種不良等目前資料為零，不納入本版規劃。Roboflow 尚未完成 bounding-box 標註與資料量驗證，因此不得固定數字 class index，也不得在文件或系統中宣稱模型已完成。四種瑕疵先集中到同一個多類別模型，避免「每個瑕疵各一個模型」造成重複 backbone、VRAM 浪費與 false positive 疊加。
+上述四種是同學家實地確認會遇到的局部瑕疵；猴痘、芽種不良等目前資料為零，不納入本版規劃。Roboflow 尚未完成 mask 標註與資料量驗證，因此不得固定數字 class index，也不得在文件或系統中宣稱模型已完成。四種瑕疵先集中到同一個多類別模型，避免「每個瑕疵各一個模型」造成重複 backbone、VRAM 浪費與 false positive 疊加。
+
+每站正式輸出 `station_{01|02|03}_{anthracnose|insect_track|abrasion|insect_bite}_area_ratio`，公式為 `defect_mask_pixels / fruit_roi_pixels`，共 `12` 個範圍為 `0～1` 的特徵。未偵測到瑕疵時為 `0`；ROI 或推論失敗時為 `null` 並進入人工覆核。Detect bbox 只能使用 `*_bbox_area_ratio` 作為實驗代理值，不得與正式 mask ratio 混用。現有 `metadata.csv` 有 `13` 筆炭疽 note，分布為中等 `4` 筆、加工 `9` 筆，因此炭疽病不設一票否決。
 
 ## 推論與效能策略
 
@@ -172,7 +174,7 @@ train / valid / test 切分
 
 模型 repository 將提供唯一的檢測實作；硬體 repository 只建立薄 Django adapter。開發期間兩個 repository 放在同一層，未來可用 editable install 連接，但目前不使用 Git submodule。
 
-檢測層預期回傳每站的 ROI、`roi_area_ratio`、顏色、二分類皺褶、四種局部瑕疵面積比例、confidence、耗時與模型 bundle version。經有效門檻判定有炭疽病時，Decision Layer 直接輸出加工 `processing`；其餘果實才交由 XGBoost 四分類。模型載入失敗、找不到百香果或信心不足時，必須回傳明確原因並保留人工覆核，不得自行猜測分類或直接控制 ESP32。
+檢測層預期回傳每站的 ROI、`roi_area_ratio`、顏色、二分類皺褶、四種局部瑕疵 mask 面積比例、confidence、耗時與模型 bundle version。所有有效果實均由 XGBoost 結合上述特徵進行四分類，不設炭疽病硬規則。模型載入失敗、找不到百香果或信心不足時，必須回傳明確原因與 `null` 特徵並保留人工覆核，不得自行猜測分類或直接控制 ESP32。
 
 ## Git 規則
 
