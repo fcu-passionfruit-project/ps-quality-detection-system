@@ -3,9 +3,12 @@ bundle_version: unbundled-2026-07-22
 bundle_status: no_distributed_weights
 source_commit: null
 runtime:
-  python: 3.10.20
-  ultralytics: 8.4.59
-  torch: 2.12.0
+  conda_environment: PF
+  python: 3.14.4
+  ultralytics: 8.4.46
+  torch: 2.11.0+cu128
+  cuda: 12.8
+  gpu: NVIDIA GeForce RTX 3070
 models: {}
 planned_models:
   stage1_roi:

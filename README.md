@@ -1,3 +1,6 @@
+# 即時狀況回報
+- 7/25 : 經由實測，上學期訓練的ROI模型在本次裝置化拍攝後的照片辨識上，準確度皆為0.98~1.00，因此可直接採用。
+
 # 百香果 Multi-stage Pipeline 檢測系統
 
 本 repository 是百香果專題的模型訓練與檢測層工作區，負責 YOLO 模型訓練、準確率驗證、獨立推論測試，以及未來提供硬體系統呼叫的 Multi-stage Pipeline。
@@ -111,40 +114,37 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 
 ## 目前已實作範圍
 
-`main/` 是獨立於 Django 的 Tkinter prototype 驗證工具；只有在開發者自行準備本機 `stage1.pt`、`stage2_1.pt`、`stage2_2.pt` 時，才可執行下列既有流程：
+`main/` 是獨立於 Django 的 Tkinter 驗證工具，正式程式集中於此，提供三個分頁：
 
-1. 選擇一張本機百香果照片。
-2. 使用 Stage 1 找出第一個百香果 ROI。
-3. 顯示 bounding box、圓形遮罩結果及灰階 CLAHE 預覽。
-4. 以兩條 thread 執行顏色與皺褶分類。
-5. 顯示兩個模型的 class name 與 confidence。
+1. 批次前處理：遞迴產生彩色 ROI，或供皺褶模型使用的灰階 CLAHE ROI。
+2. 單模型驗證：可直接測試模型就緒影像，或以輔助 ROI 模型處理完整原圖。
+3. 多模型 Pipeline：依序驗證 ROI、顏色、皺褶及可選的局部瑕疵模型。
+
+所有流程共用 `main/image_processing.py` 的參數與影像處理；每張照片只採用最高 confidence 的 ROI。推論工作在背景執行緒執行，但不同模型維持循序推論基準。驗證結果會保存 JSON、ROI 標註圖與可用的階段影像。
 
 目前尚未完成：
 
-- 三張照片的 batch pipeline。
+- 三張照片的整顆 fruit batch pipeline。
 - 局部瑕疵正式模型。
-- 統一的結構化 `DetectionResult`。
 - Django adapter 與自動決策。
 - 自動驅動 MG996R；硬體系統目前仍保留人工分類。
 
 ## Windows 執行方式
 
-建立 Python `3.10.20` 環境並安裝模型依賴：
+本 repository 固定使用既有的 `PF` Conda 環境。它包含 CUDA 版 PyTorch，不可改用硬體／Django 的 `pf_iot_env`，也不要使用 `pip` 覆蓋 PyTorch：
 
 ```powershell
-conda create -n pf_detection_env python=3.10.20 -y
-conda activate pf_detection_env
-python -m pip install -r requirements.txt
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -m pip install -r requirements.txt
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe main\main.py
 ```
 
-repository 目前不提供 `.pt` 權重。若只為本機 prototype 驗證，請自行把三個既有權重放在 `main/`；它們受 `.gitignore` 排除，不得加入 commit。`main.py` 使用相對模型路徑，因此必須從 `main/` 啟動：
+目前基準環境為 Python `3.14.4`、Ultralytics `8.4.46`、PyTorch `2.11.0+cu128`、CUDA `12.8` 與 NVIDIA GeForce RTX 3070。程式會優先使用 `cuda:0`，無 CUDA 時才回退 CPU。
 
 ```powershell
-cd main
-python main.py
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -m unittest discover -s main\tests
 ```
 
-開啟視窗後選擇一張照片，即可測試 ROI、顏色與皺褶模型。只應載入團隊自己訓練並經 manifest 驗證的 `.pt`；不要執行來源不明的 PyTorch 權重。
+權重路徑由 GUI 選擇，無須複製到固定位置。`.pt` 仍受 `.gitignore` 排除；只應載入團隊自己訓練並驗證的權重。
 
 ## 正式權重
 

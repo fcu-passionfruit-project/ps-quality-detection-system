@@ -1,33 +1,69 @@
-import cv2
+from __future__ import annotations
+
+from pathlib import Path
+
+import torch
 from ultralytics import YOLO
 
+
+ROLE_TASKS = {
+    "roi": "detect",
+    "color": "classify",
+    "wrinkle": "classify",
+    "defect": "segment",
+}
+
+
+class ModelTaskMismatch(ValueError):
+    pass
+
+
 class PassionFruitModelManager:
-    """
-    管理百香果多階段辨識系統中所有 YOLO 模型的載入與推論。
-    """
-    def __init__(self, stage1_path="stage1.pt", stage2_1_path="stage2_1.pt", stage2_2_path="stage2_2.pt"):
-        """
-        初始化並載入三個階段的 YOLO 模型。
-        """
-        self.model_stage1 = YOLO(stage1_path)
-        self.model_stage2_1 = YOLO(stage2_1_path)
-        self.model_stage2_2 = YOLO(stage2_2_path)
+    """依角色延遲載入 YOLO 模型，並統一選擇推論裝置。"""
 
-    def detect_stage1(self, file_path):
-        """
-        執行第一階段百香果目標偵測。
-        """
-        return self.model_stage1(file_path)[0]
+    def __init__(self, device: str | None = None):
+        self.device = device or ("cuda:0" if torch.cuda.is_available() else "cpu")
+        self._models: dict[str, tuple[Path, YOLO]] = {}
 
-    def classify_color(self, img_bgr):
-        """
-        執行第二階段_1 顏色分類推論。
-        """
-        return self.model_stage2_1(img_bgr)[0]
+    def load(self, role: str, model_path: str | Path) -> YOLO:
+        if role not in ROLE_TASKS:
+            raise ValueError(f"未知的模型角色：{role}")
+        path = Path(model_path).expanduser().resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"找不到 {role} 模型：{path}")
+        cached = self._models.get(role)
+        if cached and cached[0] == path:
+            return cached[1]
 
-    def classify_wrinkle(self, img_gray):
-        """
-        執行第二階段_2 皺褶分類推論。將單通道灰階轉為三通道以符合模型輸入需求。
-        """
-        clahe_bgr = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2BGR)
-        return self.model_stage2_2(clahe_bgr)[0]
+        model = YOLO(str(path))
+        expected_task = ROLE_TASKS[role]
+        actual_task = getattr(model, "task", None)
+        if actual_task != expected_task:
+            raise ModelTaskMismatch(
+                f"{role} 應為 {expected_task} 模型，目前權重是 {actual_task or 'unknown'}。"
+            )
+        self._models[role] = (path, model)
+        return model
+
+    def predict(
+        self,
+        role: str,
+        model_path: str | Path,
+        image,
+        *,
+        confidence: float | None = None,
+    ):
+        model = self.load(role, model_path)
+        options = {"device": self.device, "verbose": False}
+        if confidence is not None:
+            options["conf"] = float(confidence)
+        return model.predict(source=image, **options)[0]
+
+    def model_info(self, role: str) -> dict:
+        cached = self._models.get(role)
+        return {
+            "role": role,
+            "task": ROLE_TASKS[role],
+            "path": str(cached[0]) if cached else None,
+            "device": self.device,
+        }
