@@ -23,6 +23,7 @@ runs/
 
 # Base weights and checkpoints are local-only.
 *.pt
+!models/stage1.pt
 
 # Track only dataset documentation and manifests.
 datasets/*

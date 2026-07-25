@@ -1,6 +1,6 @@
 schema_version: 1
-bundle_version: unbundled-2026-07-22
-bundle_status: no_distributed_weights
+bundle_version: stage1-roi-2026-07-25
+bundle_status: partial_roi_only
 source_commit: null
 runtime:
   conda_environment: PF
@@ -9,15 +9,22 @@ runtime:
   torch: 2.11.0+cu128
   cuda: 12.8
   gpu: NVIDIA GeForce RTX 3070
-models: {}
-planned_models:
+models:
   stage1_roi:
-    status: pending_training_and_validation
+    status: approved_for_use
+    path: models/stage1.pt
+    sha256: 7f99c6d6e696bab4df69c37f2c51e0efe976f057432b573eb7ce48f22b86d35c
+    size_bytes: 5374213
     architecture: yolo26n
     task: detect
     imgsz: 640
     classes:
-      - PF
+      0: PF
+    validation:
+      date: 2026-07-25
+      source: device_capture_field_check
+      observed_confidence_range: [0.98, 1.00]
+planned_models:
   stage2_color:
     status: pending_training_and_validation
     architecture: yolo26n-cls
@@ -64,7 +71,7 @@ feature_contract:
     formal_source: segmentation_mask
     bbox_proxy_suffix: _bbox_area_ratio
 notes:
-  - No model weights are distributed by the repository at this time.
+  - Stage 1 ROI is the only distributed model weight in this bundle.
   - Candidate class indexes remain unset until Roboflow mask annotation and data.yaml are approved.
   - The frozen snapshot contains 981 images at 1080 x 1920, with 327 images per station.
   - Anthracnose is not a hard-veto feature; all valid fruit rows proceed to XGBoost four-class grading.

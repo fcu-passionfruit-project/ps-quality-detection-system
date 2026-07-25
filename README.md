@@ -60,7 +60,7 @@ imgsz=320                            |
 - 目標模型：YOLO26n Detect。
 - 輸入尺寸：`640`。
 - 目標類別：`PF`。
-- 目前沒有隨 repository 發布、可交付硬體端的正式權重。
+- 正式權重位於 `models/stage1.pt`，由 Git LFS 管理；SHA-256 與驗證資訊記錄於 `models/manifest.yaml`。
 
 Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的原始解析度照片，取得高細節 ROI，不可從已縮小的預覽圖再次裁切。每站另保存 `roi_area_ratio = bbox_width × bbox_height / (image_width × image_height)`；它代表百香果 bounding box 在該張照片中的面積比例，供 XGBoost 理解相對大小，不是平方公分或真實表面積。正式欄位為 `station_01_roi_area_ratio`、`station_02_roi_area_ratio`、`station_03_roi_area_ratio`。
 
@@ -148,9 +148,9 @@ C:\Users\qoqoo\anaconda3\envs\PF\python.exe -m unittest discover -s main\tests
 
 ## 正式權重
 
-目前沒有隨 repository 發布的正式權重。原本的三個 prototype 已撤除 Git 追蹤，只保留在需要它們的開發者本機。
+目前只發布通過實機照片檢查的 Stage 1 ROI 權重 `models/stage1.pt`，由 Git LFS 管理。顏色、皺褶與局部瑕疵權重仍是本機 prototype，不得提交。
 
-機器可讀規劃位於 `models/manifest.yaml`。未來只有通過準確率、類別對照、SHA-256 與硬體整合驗收的正式權重，才可重新設定 Git LFS 規則並提交；`runs/` 內的 `last.pt`、實驗 checkpoint、prototype 與基礎 YOLO 權重不得提交。
+機器可讀規劃位於 `models/manifest.yaml`。只有通過準確率、類別對照、SHA-256 與硬體整合驗收的正式權重，才可加入明確的 Git LFS 規則；`runs/` 內的 `last.pt`、實驗 checkpoint、prototype 與基礎 YOLO 權重不得提交。
 
 ## Dataset 交接規則
 
