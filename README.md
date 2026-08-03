@@ -146,11 +146,28 @@ C:\Users\qoqoo\anaconda3\envs\PF\python.exe -m unittest discover -s main\tests
 
 權重路徑由 GUI 選擇，無須複製到固定位置。`.pt` 仍受 `.gitignore` 排除；只應載入團隊自己訓練並驗證的權重。
 
+## YOLO 訓練工作區
+
+所有本機訓練產物集中在 `training/`：Roboflow 匯出檔放在 `training/packages/`，YOLO 訓練結果放在 `training/runs/`。從 repository 根目錄訓練時，必須設定 `project="training/runs"`，並使用能辨識用途與版本的實驗名稱：
+
+```python
+from ultralytics import YOLO
+
+model = YOLO("yolo26n-cls.pt")
+model.train(
+    data="training/packages/stage2-color-v001",
+    project="training/runs",
+    name="stage2-color-v001",
+)
+```
+
+詳細目錄與正式模型轉移流程見 `training/README.md`。
+
 ## 正式權重
 
 目前只發布通過實機照片檢查的 Stage 1 ROI 權重 `models/stage1.pt`，由 Git LFS 管理。顏色、皺褶與局部瑕疵權重仍是本機 prototype，不得提交。
 
-機器可讀規劃位於 `models/manifest.yaml`。只有通過準確率、類別對照、SHA-256 與硬體整合驗收的正式權重，才可加入明確的 Git LFS 規則；`runs/` 內的 `last.pt`、實驗 checkpoint、prototype 與基礎 YOLO 權重不得提交。
+機器可讀規劃位於 `models/manifest.yaml`。只有通過準確率、類別對照、SHA-256 與硬體整合驗收的正式權重，才可加入明確的 Git LFS 規則；`training/runs/` 內的 `last.pt`、實驗 checkpoint、prototype 與基礎 YOLO 權重不得提交。
 
 ## Dataset 交接規則
 
@@ -179,7 +196,7 @@ train / valid / test 切分
 ## Git 規則
 
 - 使用 feature branch 與 pull request 協作，不直接覆蓋組員的 `main`。
-- 不提交 `.venv/`、照片、dataset、`runs/`、cache 或預測輸出。
+- 不提交 `.venv/`、照片、dataset、`training/` 內的本機產物、cache 或預測輸出。
 - 不提交 ignored `dataset/` junction 或其指向的原始照片；只提交 `datasets/*.yaml` manifest。
 - 不提交每次訓練的 `last.pt` 與歷史 checkpoint。
 - Prototype 與未驗收權重一律只留本機；未來正式權重必須經團隊核准後才加入明確的 Git LFS 規則，並同步更新 `models/manifest.yaml`、SHA-256 與驗證結果。

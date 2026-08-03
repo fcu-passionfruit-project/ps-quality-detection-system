@@ -8,7 +8,10 @@ __pycache__/
 # Local datasets and experiment outputs
 dataset/
 model_record/
-runs/
+training/*
+!training/README.md
+main/model_testing_area/
+main/pipeline_testing/
 百香果照片集/
 封存/
 *.jpg
@@ -21,9 +24,9 @@ runs/
 *.mov
 *.avi
 
-# Base weights and checkpoints are local-only.
+# Models are synced through Google Drive and remain local-only.
+models/
 *.pt
-!models/stage1.pt
 
 # Track only dataset documentation and manifests.
 datasets/*

@@ -12,7 +12,7 @@ from PIL import Image, ImageTk
 
 from image_processing import DEFAULT_PARAMETERS, batch_preprocess
 from model_manager import PassionFruitModelManager
-from pipeline import run_pipeline, run_single_model, save_validation_result
+from pipeline import ROLE_LABELS, run_pipeline, run_single_model, save_validation_result
 
 
 ROLE_OPTIONS = {
@@ -23,6 +23,63 @@ ROLE_OPTIONS = {
 }
 IMAGE_FILE_TYPES = [("圖片", "*.jpg *.jpeg *.png *.bmp *.webp")]
 MODEL_FILE_TYPES = [("YOLO 權重", "*.pt")]
+
+
+def _format_stage_summary(role: str, result: dict | None) -> str:
+    label = ROLE_LABELS[role]
+    if not result:
+        return f"{label}：無結果"
+
+    status = result.get("status")
+    if status != "ok":
+        status_text = {
+            "error": "失敗",
+            "skipped": "略過",
+        }.get(status, str(status or "無結果"))
+        reason = result.get("reason")
+        return f"{label}：{status_text}" + (f"（{reason}）" if reason else "")
+
+    if role == "defect":
+        detections = result.get("detections") or []
+        if not detections:
+            return f"{label}：未偵測到"
+        values = []
+        for detection in detections:
+            value = str(detection.get("class_name", "未知類別"))
+            confidence = detection.get("confidence")
+            if confidence is not None:
+                value += f"，信心值：{float(confidence):.6f}"
+            values.append(value)
+        return f"{label}：" + "、".join(values)
+
+    class_name = "PF" if role == "roi" else result.get("class_name", "未知類別")
+    confidence = result.get("confidence")
+    confidence_text = (
+        f"，信心值：{float(confidence):.6f}" if confidence is not None else ""
+    )
+    return f"{label}：{class_name}{confidence_text}"
+
+
+def _validation_summary(report: dict) -> str:
+    parts = []
+    roi = report.get("roi")
+    if roi is not None:
+        parts.append(_format_stage_summary("roi", roi))
+
+    if report.get("mode") == "pipeline":
+        models = report.get("models", {})
+        parts.extend(
+            _format_stage_summary(role, models.get(role))
+            for role in ("color", "wrinkle", "defect")
+        )
+    else:
+        role = report.get("role")
+        if role == "roi" and roi is None:
+            parts.append(_format_stage_summary("roi", report.get("model")))
+        elif role in ROLE_LABELS and role != "roi":
+            parts.append(_format_stage_summary(role, report.get("model")))
+
+    return "　｜　".join(parts) or "尚無模型摘要"
 
 
 class PassionFruitApp:
@@ -206,7 +263,11 @@ class PassionFruitApp:
             tab, text="執行單模型驗證", command=self._start_single
         )
         self.single_button.pack(anchor="w")
-        self.single_result, self.single_previews = self._result_area(tab, 4)
+        (
+            self.single_result,
+            self.single_summary,
+            self.single_previews,
+        ) = self._result_area(tab, 4)
 
     def _build_pipeline_tab(self, tab):
         controls = ttk.LabelFrame(tab, text="Pipeline 模型（可個別留空）", padding=8)
@@ -236,13 +297,37 @@ class PassionFruitApp:
             tab, text="執行多模型 Pipeline", command=self._start_pipeline
         )
         self.pipeline_button.pack(anchor="w")
-        self.pipeline_result, self.pipeline_previews = self._result_area(tab, 5)
+        (
+            self.pipeline_result,
+            self.pipeline_summary,
+            self.pipeline_previews,
+        ) = self._result_area(tab, 5)
 
     def _result_area(self, parent, preview_count: int):
         container = ttk.Panedwindow(parent, orient="vertical")
         container.pack(fill="both", expand=True, pady=(8, 0))
         result = scrolledtext.ScrolledText(container, height=9, wrap="word")
         preview_frame = ttk.Frame(container)
+        summary = ttk.Label(
+            preview_frame,
+            text="模型摘要：尚無結果",
+            anchor="w",
+            justify="left",
+            wraplength=1000,
+            font=("Microsoft JhengHei UI", 10, "bold"),
+        )
+        summary.grid(
+            row=0,
+            column=0,
+            columnspan=preview_count,
+            sticky="ew",
+            padx=3,
+            pady=(0, 6),
+        )
+        preview_frame.bind(
+            "<Configure>",
+            lambda event: summary.config(wraplength=max(event.width - 12, 1)),
+        )
         labels = []
         for column in range(preview_count):
             label = ttk.Label(
@@ -251,14 +336,15 @@ class PassionFruitApp:
                 anchor="center",
                 relief="solid",
                 padding=4,
+                takefocus=False,
             )
-            label.grid(row=0, column=column, sticky="nsew", padx=3)
+            label.grid(row=1, column=column, sticky="nsew", padx=3)
             preview_frame.columnconfigure(column, weight=1)
             labels.append(label)
-        preview_frame.rowconfigure(0, weight=1)
+        preview_frame.rowconfigure(1, weight=1)
         container.add(result, weight=1)
         container.add(preview_frame, weight=2)
-        return result, labels
+        return result, summary, labels
 
     def _parameter_values(self) -> dict:
         try:
@@ -359,7 +445,10 @@ class PassionFruitApp:
             self.single_button,
             job,
             lambda result: self._show_validation(
-                result, self.single_result, self.single_previews
+                result,
+                self.single_result,
+                self.single_summary,
+                self.single_previews,
             ),
         )
 
@@ -398,7 +487,10 @@ class PassionFruitApp:
             self.pipeline_button,
             job,
             lambda result: self._show_validation(
-                result, self.pipeline_result, self.pipeline_previews
+                result,
+                self.pipeline_result,
+                self.pipeline_summary,
+                self.pipeline_previews,
             ),
         )
 
@@ -461,7 +553,7 @@ class PassionFruitApp:
         )
         messagebox.showinfo("批次完成", f"成功輸出 {report['counts']['ok']} 張圖片。")
 
-    def _show_validation(self, result, target, preview_labels):
+    def _show_validation(self, result, target, summary, preview_labels):
         report, artifacts, run_dir = result
         target.delete("1.0", tk.END)
         target.insert(
@@ -469,6 +561,7 @@ class PassionFruitApp:
             json.dumps(report, ensure_ascii=False, indent=2)
             + f"\n\n輸出：{run_dir}",
         )
+        summary.config(text=f"模型摘要：{_validation_summary(report)}")
         self._display_artifacts(artifacts, preview_labels)
 
     def _display_artifacts(self, artifacts, labels):
@@ -485,8 +578,16 @@ class PassionFruitApp:
         ]
         self.image_refs = []
         for index, label in enumerate(labels):
+            for sequence in ("<Button-1>", "<Return>", "<space>"):
+                label.unbind(sequence)
             if index >= len(names):
-                label.config(image="", text="無此階段輸出")
+                label.config(
+                    image="",
+                    text="無此階段輸出",
+                    cursor="",
+                    takefocus=False,
+                )
+                label.image = None
                 continue
             name = names[index]
             image = artifacts[name]
@@ -495,12 +596,43 @@ class PassionFruitApp:
                 if image.ndim == 2
                 else cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             )
-            pil_image = Image.fromarray(rgb)
-            pil_image.thumbnail((300, 260))
-            photo = ImageTk.PhotoImage(pil_image)
-            label.config(image=photo, text=name, compound="top")
+            full_image = Image.fromarray(rgb)
+            preview = full_image.copy()
+            preview.thumbnail((300, 260), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(preview)
+            label.config(
+                image=photo,
+                text=name,
+                compound="top",
+                cursor="hand2",
+                takefocus=True,
+            )
             label.image = photo
             self.image_refs.append(photo)
+
+            def open_image(_event=None, image=full_image, title=name):
+                self._open_image_viewer(image, title)
+
+            for sequence in ("<Button-1>", "<Return>", "<space>"):
+                label.bind(sequence, open_image)
+
+    def _open_image_viewer(self, image: Image.Image, title: str):
+        window = tk.Toplevel(self.root)
+        window.title(f"{title}－詳細圖片")
+        window.transient(self.root)
+        display_image = image.copy()
+        display_image.thumbnail(
+            (
+                max(self.root.winfo_screenwidth() - 80, 1),
+                max(self.root.winfo_screenheight() - 160, 1),
+            ),
+            Image.Resampling.LANCZOS,
+        )
+        photo = ImageTk.PhotoImage(display_image, master=window)
+        ttk.Label(window, image=photo, padding=8).pack(fill="both", expand=True)
+        window.image = photo
+        window.bind("<Escape>", lambda _event: window.destroy())
+        window.focus_set()
 
     def _choose_file(self, variable, file_types):
         path = filedialog.askopenfilename(filetypes=file_types)
