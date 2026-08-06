@@ -3,18 +3,27 @@
 
 # 百香果 Multi-stage Pipeline 檢測系統
 
-本 repository 是百香果專題的模型訓練與檢測層工作區，負責 YOLO 模型訓練、準確率驗證、獨立推論測試，以及未來提供硬體系統呼叫的 Multi-stage Pipeline。
+本 repository 是百香果專題檢測層的 GitHub 程式來源，保留 `main/` 模型檢測工具與必要執行文件。資料集、規格文件、模型及訓練產物則由團隊的 [Google Drive 共用資料夾](https://drive.google.com/drive/folders/1USQK25FW7c0lLfCK1j9dGp9byPnZ5UZ9?usp=sharing) 管理。
 
 架構內容整理自 Notion 的[「檢測層－Multi-stage Pipeline 架構設計」](https://app.notion.com/p/38d2e71fbc158042bc2bc3e6e43e9bbb)，並依目前正式硬體修正：影像來源是手機相機頁在三個停止拍攝站點取得的 `img_01.jpg`、`img_02.jpg`、`img_03.jpg`，不是舊版 ESP32-CAM 六視角連拍。
 
 ## Repository 分工
 
-本 repository 是模型與檢測層的唯一程式來源：
+專案有兩個主要存取位置：
 
-- 訓練與驗證 ROI、顏色、皺褶及局部瑕疵模型。
-- 保存模型設定、類別名稱、驗證指標與 dataset manifest。
-- 提供不依賴 Django 的獨立推論工具，先確認模型本身能正常運作。
-- 未來整理成可匯入的 Python package，供硬體 repository 的 Django adapter 呼叫。
+- [GitHub repository](https://github.com/fcu-passionfruit-project/ps-quality-detection-system)：管理 `main/` 模型檢測工具、執行說明及必要相依套件。
+- [Google Drive 共用資料夾](https://drive.google.com/drive/folders/1USQK25FW7c0lLfCK1j9dGp9byPnZ5UZ9?usp=sharing)：供組員共同存取與修改資料、規格、模型及訓練產物。
+
+| 目錄 | 用途 | 主要存取位置 |
+| --- | --- | --- |
+| `datasets/` | 存放分類標籤及準備上傳 Roboflow 的資料 | Google Drive |
+| `docs/` | 存放 Agent skill、參數、定義與規格書 | Google Drive |
+| `main/` | 模型檢測工具 | GitHub `main` 分支 |
+| `models/` | 存放訓練完成的模型；日期子目錄代表舊模型紀錄 | Google Drive |
+| `training/packages/` | 存放模型訓練使用的資料 | Google Drive |
+| `training/runs/` | 存放模型訓練結果 | Google Drive |
+
+`main/` 提供不依賴 Django 的獨立推論工具，供團隊先驗證模型，再逐步整理成硬體系統可呼叫的介面。
 
 硬體與資料採集系統位於 [`Eten0721/PassionFruit_IoT_hardware`](https://github.com/Eten0721/PassionFruit_IoT_hardware)，負責 Django、手機相機、Dashboard、ESP32、三個 SG90 閘門與 MG996R。模型不得直接控制 GPIO；AI 最終結果必須交回 Django 的 `classify_fruit` 流程。
 
@@ -60,7 +69,7 @@ imgsz=320                            |
 - 目標模型：YOLO26n Detect。
 - 輸入尺寸：`640`。
 - 目標類別：`PF`。
-- 正式權重位於 `models/stage1.pt`，由 Git LFS 管理；SHA-256 與驗證資訊記錄於 `models/manifest.yaml`。
+- 正式權重由 Google Drive 的 `models/` 管理，執行時透過 GUI 選取。
 
 Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的原始解析度照片，取得高細節 ROI，不可從已縮小的預覽圖再次裁切。每站另保存 `roi_area_ratio = bbox_width × bbox_height / (image_width × image_height)`；它代表百香果 bounding box 在該張照片中的面積比例，供 XGBoost 理解相對大小，不是平方公分或真實表面積。正式欄位為 `station_01_roi_area_ratio`、`station_02_roi_area_ratio`、`station_03_roi_area_ratio`。
 
@@ -88,7 +97,7 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 - 正式目標類別：`smooth`、`wrinkle` 二分類。
 - 目前沒有隨 repository 發布、可交付硬體端的正式權重。
 
-先前的三分類 prototype 不再作為正式規格。新模型仍必須從權重讀取 class name，並在 manifest 固定 index 對照，不可由程式自行猜測數字語意。
+先前的三分類 prototype 不再作為正式規格。新模型仍必須從權重讀取 class name，類別 index 對照與驗收規格由 Google Drive 的 `docs/` 管理，不可由程式自行猜測數字語意。
 
 ### Stage 2-3：局部瑕疵
 
@@ -144,11 +153,11 @@ C:\Users\qoqoo\anaconda3\envs\PF\python.exe main\main.py
 C:\Users\qoqoo\anaconda3\envs\PF\python.exe -m unittest discover -s main\tests
 ```
 
-權重路徑由 GUI 選擇，無須複製到固定位置。`.pt` 仍受 `.gitignore` 排除；只應載入團隊自己訓練並驗證的權重。
+權重路徑由 GUI 選擇，可直接使用 Google Drive 或其本機同步位置中的 `.pt` 檔案，無須複製到固定位置。`.pt` 仍受 `.gitignore` 排除；只應載入團隊自己訓練並驗證的權重。
 
 ## YOLO 訓練工作區
 
-所有本機訓練產物集中在 `training/`：Roboflow 匯出檔放在 `training/packages/`，YOLO 訓練結果放在 `training/runs/`。從 repository 根目錄訓練時，必須設定 `project="training/runs"`，並使用能辨識用途與版本的實驗名稱：
+訓練工作區由 Google Drive 的 `training/` 管理：模型訓練使用的資料放在 `training/packages/`，YOLO 訓練結果放在 `training/runs/`。以下相對路徑假設 Google Drive 資料已同步或下載到 repository 根目錄；訓練時必須設定 `project="training/runs"`，並使用能辨識用途與版本的實驗名稱：
 
 ```python
 from ultralytics import YOLO
@@ -161,42 +170,29 @@ model.train(
 )
 ```
 
-詳細目錄與正式模型轉移流程見 `training/README.md`。
+訓練完成並通過驗收的模型移至 Google Drive 的 `models/`；舊模型放在日期命名的子目錄中。
 
 ## 正式權重
 
-目前只發布通過實機照片檢查的 Stage 1 ROI 權重 `models/stage1.pt`，由 Git LFS 管理。顏色、皺褶與局部瑕疵權重仍是本機 prototype，不得提交。
+所有訓練完成的權重由 Google Drive 的 `models/` 管理，不隨 GitHub repository 發布。日期命名的子目錄保存舊模型紀錄；目前使用的模型應放在 `models/` 的主要位置，並由 GUI 選取。
 
-機器可讀規劃位於 `models/manifest.yaml`。只有通過準確率、類別對照、SHA-256 與硬體整合驗收的正式權重，才可加入明確的 Git LFS 規則；`training/runs/` 內的 `last.pt`、實驗 checkpoint、prototype 與基礎 YOLO 權重不得提交。
+`training/runs/` 內的 `last.pt`、實驗 checkpoint、prototype 與基礎 YOLO 權重留在 Google Drive，不提交 GitHub。模型只有通過準確率、類別對照與硬體整合驗收後，才可作為目前使用版本。
 
 ## Dataset 交接規則
 
-原始照片、增強照片、Roboflow 匯出資料與 train／valid／test 影像不進 Git。本機原始快照實體保存於 `D:\passion-fruit-datasets\`，repository 根目錄的 ignored `dataset/` junction 指向該位置；模型 repository 只追蹤 `datasets/` 內的 manifest：
+`datasets/` 存放分類標籤及準備上傳 Roboflow 的資料，統一由 Google Drive 共享與修改，不提交 GitHub。原始照片、增強照片及 train／valid／test 影像也應留在 Google Drive 或 Roboflow，避免 repository 納入大量或頻繁變動的資料。
 
-```text
-dataset_id
-建立日期與來源
-fruit 數量與影像數量
-每顆 fruit 固定三站影像
-四個人工分類的分布
-train / valid / test 切分
-儲存位置與 checksum manifest
-```
-
-目前 `pf-20260716-v001` 保存 `2026-07-16` 三站採集的 `327` 顆百香果與 `981` 張照片；三站各 `327` 張，所有照片皆為 `1080 × 1920`。尚未建立 train／valid／test，由後續 Roboflow 流程負責切分。其 manifest 位於 `datasets/pf-20260716-v001.yaml`，原始快照可由 `dataset/pf-20260716-v001/` 存取。
-
-範本位於 `datasets/manifest.example.yaml`。每份準確率報告必須同時記錄 dataset ID、模型 manifest 版本與 Git commit，避免同一個模型名稱對應到不同資料。`dataset/` junction 只提供本機存取，不是第二份備份；凍結快照仍須上傳到 Roboflow 或團隊共用儲存空間。
+資料版本、來源、分類定義與切分規格應記錄在 Google Drive 的 `docs/`。每次訓練與準確率報告需標明使用的資料版本及模型版本，避免同名模型對應到不同資料。
 
 ## 未來與硬體系統整合
 
-模型 repository 將提供唯一的檢測實作；硬體 repository 只建立薄 Django adapter。開發期間兩個 repository 放在同一層，未來可用 editable install 連接，但目前不使用 Git submodule。
+GitHub repository 的 `main/` 提供檢測實作；硬體 repository 只建立薄 Django adapter。開發期間兩個 repository 放在同一層，未來可用 editable install 連接，但目前不使用 Git submodule。
 
 檢測層預期回傳每站的 ROI、`roi_area_ratio`、顏色、二分類皺褶、四種局部瑕疵 mask 面積比例、confidence、耗時與模型 bundle version。所有有效果實均由 XGBoost 結合上述特徵進行四分類，不設炭疽病硬規則。模型載入失敗、找不到百香果或信心不足時，必須回傳明確原因與 `null` 特徵並保留人工覆核，不得自行猜測分類或直接控制 ESP32。
 
 ## Git 規則
 
 - 使用 feature branch 與 pull request 協作，不直接覆蓋組員的 `main`。
-- 不提交 `.venv/`、照片、dataset、`training/` 內的本機產物、cache 或預測輸出。
-- 不提交 ignored `dataset/` junction 或其指向的原始照片；只提交 `datasets/*.yaml` manifest。
-- 不提交每次訓練的 `last.pt` 與歷史 checkpoint。
-- Prototype 與未驗收權重一律只留本機；未來正式權重必須經團隊核准後才加入明確的 Git LFS 規則，並同步更新 `models/manifest.yaml`、SHA-256 與驗證結果。
+- GitHub 只提交 `main/` 模型檢測工具及必要的執行文件與相依套件。
+- `datasets/`、`docs/`、`models/`、`training/` 由 Google Drive 管理，不提交 GitHub。
+- 不提交 `.venv/`、照片、cache、預測輸出、`.pt` 權重或訓練 checkpoint。
