@@ -4,12 +4,14 @@ venv/
 __pycache__/
 *.py[cod]
 *.cache
+/AGENTS.md
+/docs/agents/
 
 # Local datasets and experiment outputs
 dataset/
+/datasets/
 model_record/
-training/*
-!training/README.md
+/training/
 main/model_testing_area/
 main/pipeline_testing/
 百香果照片集/
@@ -27,9 +29,3 @@ main/pipeline_testing/
 # Models are synced through Google Drive and remain local-only.
 models/
 *.pt
-
-# Track only dataset documentation and manifests.
-datasets/*
-!datasets/README.md
-!datasets/manifest.example.yaml
-!datasets/*.yaml
