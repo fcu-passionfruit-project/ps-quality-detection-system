@@ -1,4 +1,4 @@
-# CUDA 版 PyTorch 由既有的 PF Conda 環境管理，請勿用 pip 覆蓋。
+# CUDA 版 PyTorch 使用官方 CUDA 12.8 index 安裝；重建指令見 README.md。
 ultralytics==8.4.46
 opencv-python==4.13.0.92
 numpy==2.4.3

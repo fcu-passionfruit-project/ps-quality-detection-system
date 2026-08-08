@@ -140,17 +140,29 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 
 ## Windows 執行方式
 
-本 repository 固定使用既有的 `PF` Conda 環境。它包含 CUDA 版 PyTorch，不可改用硬體／Django 的 `pf_iot_env`，也不要使用 `pip` 覆蓋 PyTorch：
+本 repository 與硬體／Django 共用 `PF` Conda 環境。既有環境已包含 CUDA 版 PyTorch，日常安裝只需同步本 Repository 的直接依賴：
 
 ```powershell
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -m pip install -r requirements.txt
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe main\main.py
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m pip install -r requirements.txt
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\main.py
 ```
+
+全新重建 `PF` 時固定使用 Python `3.14.4`，並從 PyTorch 官方 CUDA `12.8` index 安裝 GPU wheel：
+
+```powershell
+conda create -n PF python=3.14.4 pip -y
+conda activate PF
+python -s -m pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
+python -s -m pip install -r requirements.txt
+python -s -m pip check
+```
+
+`requirements.txt` 不重複列出 PyTorch，避免一般 PyPI 安裝覆蓋 CUDA wheel。指令使用 Python `-s` 停用 user-site，確保程式只讀取 `PF` 內的套件。
 
 目前基準環境為 Python `3.14.4`、Ultralytics `8.4.46`、PyTorch `2.11.0+cu128`、CUDA `12.8` 與 NVIDIA GeForce RTX 3070。程式會優先使用 `cuda:0`，無 CUDA 時才回退 CPU。
 
 ```powershell
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -m unittest discover -s main\tests
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m unittest discover -s main\tests
 ```
 
 權重路徑由 GUI 選擇，可直接使用 Google Drive 或其本機同步位置中的 `.pt` 檔案，無須複製到固定位置。`.pt` 仍受 `.gitignore` 排除；只應載入團隊自己訓練並驗證的權重。
