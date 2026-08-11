@@ -135,6 +135,22 @@ def _predict(
     )
 
 
+def _predict_batch(
+    manager: PassionFruitModelManager,
+    role: str,
+    model_path: str,
+    images: list[np.ndarray],
+    *,
+    confidence: float | None = None,
+) -> tuple[list, float]:
+    started = perf_counter()
+    results = manager.predict_batch(
+        role, model_path, images, confidence=confidence
+    )
+    elapsed_ms = (perf_counter() - started) * 1000
+    return results, elapsed_ms
+
+
 def _settings(parameters: dict | None) -> dict:
     values = {**DEFAULT_PARAMETERS, **(parameters or {})}
     values["clahe_tile_size"] = int(values["clahe_tile_size"])
@@ -272,6 +288,208 @@ def run_pipeline(
     return report, artifacts
 
 
+def run_pipeline_batch(
+    image_paths: list[str | Path],
+    model_paths: dict[str, str],
+    *,
+    parameters: dict | None = None,
+    manager: PassionFruitModelManager | None = None,
+) -> tuple[list[dict], list[dict[str, np.ndarray]]]:
+    started = perf_counter()
+    settings = _settings(parameters)
+    manager = manager or PassionFruitModelManager()
+
+    sources = [Path(path).resolve() for path in image_paths]
+    source_images = [read_image(source) for source in sources]
+
+    reports: list[dict] = [
+        {
+            "ok": False,
+            "source": str(source),
+            "mode": "pipeline_batch",
+            "device": manager.device,
+            "model_paths": {
+                role: str(Path(path).resolve()) if path else None
+                for role, path in model_paths.items()
+            },
+            "parameters": settings,
+            "roi": None,
+            "models": {},
+        }
+        for source in sources
+    ]
+    artifacts_list: list[dict[str, np.ndarray]] = [
+        {"original": image} for image in source_images
+    ]
+
+    roi_model_path = model_paths.get("roi", "")
+    if not roi_model_path:
+        for index in range(len(sources)):
+            reports[index]["roi"] = {
+                "status": "error",
+                "reason": "roi_model_missing",
+            }
+            reports[index]["reason"] = "roi_model_missing"
+            for role in ("color", "wrinkle", "defect"):
+                reports[index]["models"][role] = {
+                    "status": "skipped",
+                    "reason": "roi_unavailable",
+                }
+            reports[index]["elapsed_ms"] = round(
+                (perf_counter() - started) * 1000, 2
+            )
+        return reports, artifacts_list
+
+    try:
+        roi_results, roi_elapsed_ms = _predict_batch(
+            manager,
+            "roi",
+            roi_model_path,
+            source_images,
+            confidence=settings["confidence"],
+        )
+    except Exception as error:
+        reason = _error_reason(error)
+        for index in range(len(sources)):
+            reports[index]["roi"] = {"status": "error", "reason": reason}
+            reports[index]["reason"] = reason
+            for role in ("color", "wrinkle", "defect"):
+                reports[index]["models"][role] = {
+                    "status": "skipped",
+                    "reason": "roi_unavailable",
+                }
+            reports[index]["elapsed_ms"] = round(
+                (perf_counter() - started) * 1000, 2
+            )
+        return reports, artifacts_list
+
+    per_image_roi_ms = round(roi_elapsed_ms / max(len(sources), 1), 2)
+
+    ready_indices: list[int] = []
+    masked_rois: list[np.ndarray] = []
+    gray_inputs: list[np.ndarray] = []
+    roi_masks: list[np.ndarray] = []
+
+    for index, (source_image, roi_result) in enumerate(
+        zip(source_images, roi_results, strict=True)
+    ):
+        try:
+            detection = select_best_detection(roi_result)
+            if not detection:
+                reports[index]["roi"] = {
+                    "status": "error",
+                    "reason": "roi_not_detected",
+                    "elapsed_ms": per_image_roi_ms,
+                }
+                continue
+            masked, mask, roi = extract_masked_roi(
+                source_image,
+                detection,
+                shrink_ratio=settings["shrink_ratio"],
+                mask_scale=settings["mask_scale"],
+            )
+            roi.update(status="ok", reason=None, elapsed_ms=per_image_roi_ms)
+            reports[index]["roi"] = roi
+            artifacts_list[index]["roi_annotated"] = annotate_roi(
+                source_image, roi
+            )
+            artifacts_list[index]["masked_roi"] = masked
+            artifacts_list[index]["roi_mask"] = mask
+
+            gray = process_grayscale_clahe(
+                masked,
+                settings["clahe_clip_limit"],
+                settings["clahe_tile_size"],
+            )
+            artifacts_list[index]["wrinkle_gray"] = gray
+
+            ready_indices.append(index)
+            masked_rois.append(masked)
+            gray_inputs.append(cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR))
+            roi_masks.append(mask)
+        except Exception as error:
+            reports[index]["roi"] = {
+                "status": "error",
+                "reason": _error_reason(error),
+            }
+
+    for index in range(len(sources)):
+        if index not in ready_indices:
+            reports[index]["reason"] = reports[index]["roi"].get(
+                "reason", "roi_unavailable"
+            )
+            for role in ("color", "wrinkle", "defect"):
+                reports[index]["models"][role] = {
+                    "status": "skipped",
+                    "reason": "roi_unavailable",
+                }
+
+    if not ready_indices:
+        for index in range(len(sources)):
+            reports[index]["elapsed_ms"] = round(
+                (perf_counter() - started) * 1000, 2
+            )
+        return reports, artifacts_list
+
+    role_inputs = {
+        "color": masked_rois,
+        "wrinkle": gray_inputs,
+        "defect": masked_rois,
+    }
+
+    for role in ("color", "wrinkle", "defect"):
+        model_path = model_paths.get(role, "")
+        if not model_path:
+            for index in ready_indices:
+                reports[index]["models"][role] = {
+                    "status": "skipped",
+                    "reason": "model_missing",
+                }
+            continue
+
+        try:
+            batch_results, batch_elapsed_ms = _predict_batch(
+                manager, role, model_path, role_inputs[role]
+            )
+        except Exception as error:
+            reason = _error_reason(error)
+            for index in ready_indices:
+                reports[index]["models"][role] = {
+                    "status": "error",
+                    "reason": reason,
+                }
+            continue
+
+        per_image_ms = round(batch_elapsed_ms / max(len(ready_indices), 1), 2)
+        for position, index in enumerate(ready_indices):
+            try:
+                result = batch_results[position]
+                if role in {"color", "wrinkle"}:
+                    summary = _classification_summary(result, per_image_ms)
+                else:
+                    summary = _segmentation_summary(
+                        result, per_image_ms, roi_masks[position]
+                    )
+                    artifacts_list[index]["defect_annotated"] = result.plot()
+                reports[index]["models"][role] = summary
+            except Exception as error:
+                reports[index]["models"][role] = {
+                    "status": "error",
+                    "reason": _error_reason(error),
+                }
+
+    for index, report in enumerate(reports):
+        model_statuses = report["models"].values()
+        has_error = any(item["status"] == "error" for item in model_statuses)
+        roi_ok = report["roi"].get("status") == "ok"
+        report["ok"] = roi_ok and not has_error
+        if not report["ok"] and report.get("reason") is None:
+            report["reason"] = "model_inference_failed"
+        report["elapsed_ms"] = round((perf_counter() - started) * 1000, 2)
+
+    return reports, artifacts_list
+
+
 def run_single_model(
     image_path: str | Path,
     role: str,
@@ -397,3 +615,14 @@ def save_validation_result(
         encoding="utf-8",
     )
     return run_dir
+
+
+def save_validation_result_batch(
+    output_root: str | Path,
+    reports: list[dict],
+    artifacts_list: list[dict[str, np.ndarray]],
+) -> list[Path]:
+    return [
+        save_validation_result(output_root, report, artifacts)
+        for report, artifacts in zip(reports, artifacts_list, strict=True)
+    ]

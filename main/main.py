@@ -12,7 +12,13 @@ from PIL import Image, ImageTk
 
 from image_processing import DEFAULT_PARAMETERS, batch_preprocess
 from model_manager import PassionFruitModelManager
-from pipeline import ROLE_LABELS, run_pipeline, run_single_model, save_validation_result
+from pipeline import (
+    ROLE_LABELS,
+    run_pipeline_batch,
+    run_single_model,
+    save_validation_result,
+    save_validation_result_batch,
+)
 
 
 ROLE_OPTIONS = {
@@ -66,7 +72,7 @@ def _validation_summary(report: dict) -> str:
     if roi is not None:
         parts.append(_format_stage_summary("roi", roi))
 
-    if report.get("mode") == "pipeline":
+    if report.get("mode") in ("pipeline", "pipeline_batch"):
         models = report.get("models", {})
         parts.extend(
             _format_stage_summary(role, models.get(role))
@@ -286,22 +292,30 @@ class PassionFruitApp:
             self._path_row(
                 controls, row, label, self.pipeline_models[role], model=True
             )
-        self.pipeline_image = tk.StringVar()
+        self.pipeline_images = [tk.StringVar() for _ in range(3)]
         self.pipeline_output = tk.StringVar()
-        self._path_row(controls, 4, "完整原圖", self.pipeline_image)
+        for index, variable in enumerate(self.pipeline_images):
+            self._path_row(controls, 4 + index, f"照片 {index + 1}", variable)
         self._path_row(
-            controls, 5, "驗證輸出資料夾", self.pipeline_output, directory=True
+            controls, 7, "驗證輸出資料夾", self.pipeline_output, directory=True
         )
         self._parameter_frame(tab).pack(fill="x", pady=10)
         self.pipeline_button = ttk.Button(
-            tab, text="執行多模型 Pipeline", command=self._start_pipeline
+            tab, text="執行多模型 Pipeline（三張照片）", command=self._start_pipeline
         )
         self.pipeline_button.pack(anchor="w")
-        (
-            self.pipeline_result,
-            self.pipeline_summary,
-            self.pipeline_previews,
-        ) = self._result_area(tab, 5)
+        result_notebook = ttk.Notebook(tab)
+        result_notebook.pack(fill="both", expand=True, pady=(8, 0))
+        self.pipeline_results = []
+        self.pipeline_summaries = []
+        self.pipeline_previews = []
+        for index in range(3):
+            result_tab = ttk.Frame(result_notebook, padding=6)
+            result_notebook.add(result_tab, text=f"照片 {index + 1} 結果")
+            result, summary, previews = self._result_area(result_tab, 5)
+            self.pipeline_results.append(result)
+            self.pipeline_summaries.append(summary)
+            self.pipeline_previews.append(previews)
 
     def _result_area(self, parent, preview_count: int):
         container = ttk.Panedwindow(parent, orient="vertical")
@@ -463,35 +477,30 @@ class PassionFruitApp:
                 role: variable.get()
                 for role, variable in self.pipeline_models.items()
             },
-            "image": self.pipeline_image.get(),
+            "images": [variable.get() for variable in self.pipeline_images],
             "output": self.pipeline_output.get(),
             "parameters": parameters,
         }
-        if not values["image"] or not values["output"]:
-            messagebox.showwarning("資料未完整", "請選擇完整原圖及輸出資料夾。")
+        if not all(values["images"]) or not values["output"]:
+            messagebox.showwarning("資料未完整", "請選擇三張照片及輸出資料夾。")
             return
 
         def job():
-            report, artifacts = run_pipeline(
-                values["image"],
+            reports, artifacts_list = run_pipeline_batch(
+                values["images"],
                 values["models"],
                 parameters=values["parameters"],
                 manager=self.manager,
             )
-            run_dir = save_validation_result(
-                values["output"], report, artifacts
+            run_dirs = save_validation_result_batch(
+                values["output"], reports, artifacts_list
             )
-            return report, artifacts, run_dir
+            return reports, artifacts_list, run_dirs
 
         self._run_async(
             self.pipeline_button,
             job,
-            lambda result: self._show_validation(
-                result,
-                self.pipeline_result,
-                self.pipeline_summary,
-                self.pipeline_previews,
-            ),
+            self._show_pipeline_batch_result,
         )
 
     def _run_async(self, button, job, on_success):
@@ -563,6 +572,21 @@ class PassionFruitApp:
         )
         summary.config(text=f"模型摘要：{_validation_summary(report)}")
         self._display_artifacts(artifacts, preview_labels)
+
+    def _show_pipeline_batch_result(self, result):
+        reports, artifacts_list, run_dirs = result
+        for report, artifacts, run_dir, target, summary, previews in zip(
+            reports,
+            artifacts_list,
+            run_dirs,
+            self.pipeline_results,
+            self.pipeline_summaries,
+            self.pipeline_previews,
+            strict=True,
+        ):
+            self._show_validation(
+                (report, artifacts, run_dir), target, summary, previews
+            )
 
     def _display_artifacts(self, artifacts, labels):
         names = [
