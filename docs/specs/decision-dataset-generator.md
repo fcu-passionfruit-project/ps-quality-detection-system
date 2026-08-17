@@ -25,7 +25,7 @@ DecisionLayerTrain/
 - 結構錯誤的果實不建立合成 CSV 列，錯誤寫入 `validation_errors.csv`，其他合法果實繼續處理。
 - 舊 `上等/中等/下等/加工` 只代表 Legacy Fruit Grade，不可轉成 Image Grade。
 
-`prepare_decision_layout.py --dry-run` 先列出搬移計畫。`--apply` 才將果實資料夾搬到原 split 直下，寫出 `layout_migration.csv`，並只刪除確認為空的舊級距資料夾。
+GUI 的「資料結構」先預覽搬移計畫，成功後才允許套用；CLI 對應為 `decision_dataset_cli.py layout --dry-run|--apply`。套用時將果實資料夾搬到原 split 直下，寫出 `layout_migration.csv`，並只刪除確認為空的舊級距資料夾。
 
 ## Model Bundle 契約
 
@@ -85,10 +85,12 @@ decision_datasets/v001/
 
 - 同一 Dataset Version 必須維持完全相同的 Model Manifest hash。
 - 更新任一權重時建立新版本。`--labels-from` 只複製來源照片 hash 相同的 grade。
-- 預設略過既有成功與錯誤列，只補缺少的列。`--only-errors` 只重試錯誤列。
-- 指定已成功列重跑時必須加 `--force`。
-- 照片 hash 變更時必須加 `--replace-image`，並清空該列 grade。
+- 五種公開操作模式是 `resume`、`only_errors`、`rerun_fruit`、`rerun_view`、`replace_image`；GUI 與 CLI 共用同一個 `GenerationRequest`。
+- `resume` 略過既有成功與錯誤列，只補缺少列；`only_errors` 只重試錯誤列。
+- `rerun_fruit` 重跑指定果實三張照片；`rerun_view` 重跑指定單張。
+- `replace_image` 更新照片 hash、重跑指定範圍，並清空受影響列的 grade。
 - 每顆果實處理完立即原子寫入 CSV。局部失敗繼續批次，最後以非 0 exit code 回報。
+- GUI 的安全停止只在果實 checkpoint 邊界生效：完成目前果實最多三張照片並寫入 CSV 後，不再開始下一顆。
 
 ## 驗收
 

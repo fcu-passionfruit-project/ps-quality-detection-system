@@ -164,63 +164,16 @@ C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m unittest discover -s main\test
 
 權重路徑由 GUI 選擇，可直接使用 Google Drive 或其本機同步位置中的 `.pt` 檔案，無須複製到固定位置。`.pt` 仍受 `.gitignore` 排除；只應載入團隊自己訓練並驗證的權重。
 
-## 決策資料集 CLI
+## 決策資料集工具
 
-完整規格見 [`docs/specs/decision-dataset-generator.md`](docs/specs/decision-dataset-generator.md)。正式流程只需要一份包含 `split` 欄位的主 CSV；不需另存 `train.csv`、`valid.csv` 與 `test.csv`。XGBoost 訓練時依 `split` 篩選列，並以明確 feature allowlist 排除管理欄位與第一版不使用的 confidence 欄位。
-
-### 1. 預覽並整理資料夾
-
-原始 `train/valid/test` 切分必須保留。同一顆果實的三張照片不可跨 split。以下指令只移除舊的 `上等/中等/下等/加工` 資料夾層，舊資料夾級距不會寫入 CSV：
+組員主要由 GUI 的「4. 決策資料集」分頁操作；自動化與除錯則使用單一入口 `main/decision_dataset_cli.py`。工具只產生一份含 `split` 欄位的主 CSV，不另拆 `train.csv`、`valid.csv` 與 `test.csv`。
 
 ```powershell
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\prepare_decision_layout.py --dry-run
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\prepare_decision_layout.py --apply
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\decision_dataset_cli.py --help
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\decision_dataset_cli.py generate --version v001
 ```
 
-整理後每顆果實固定為：
-
-```text
-DecisionLayerTrain/
-├── train/fruit_001/img_01.jpg, img_02.jpg, img_03.jpg
-├── valid/fruit_.../img_01.jpg, img_02.jpg, img_03.jpg
-└── test/fruit_.../img_01.jpg, img_02.jpg, img_03.jpg
-```
-
-### 2. 維護 Model Bundle
-
-權重必須放在 repository 的 `models/`。`update` 會讀取 `.pt` 的 task 與 classes，自動計算 SHA-256、檔案大小及架構名稱，並先標成 `candidate`：
-
-```powershell
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\manage_model_manifest.py update --role defect --model models\defect.pt --imgsz 1024 --confidence-threshold 0.25
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\manage_model_manifest.py approve --role defect
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\manage_model_manifest.py validate
-```
-
-可用角色是 `roi`、`color`、`wrinkle`、`defect`。`roi` 與 `defect` 必須指定 `--confidence-threshold`；分類模型不可指定。每次寫入會先建立 `manifest.yaml.bak`，也可加 `--dry-run` 預覽。
-
-目前 `models/manifest.yaml` 是舊版 partial manifest，四個正式角色尚未全部核准，因此正式資料產生會被阻擋。局部瑕疵模型完成後，再依序 `update`、`approve` 與 `validate`。
-
-### 3. 產生、續跑與重跑 CSV
-
-```powershell
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\generate_decision_dataset.py --version v001 --validate-only
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\generate_decision_dataset.py --version v001
-```
-
-輸出位於 `decision_datasets/v001/`。程式預設略過 CSV 內既有的成功與錯誤列，只處理缺少的照片；每顆果實完成後即 checkpoint。
-
-```powershell
-# 重跑單張照片
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\generate_decision_dataset.py --version v001 --fruit-id 140 --view-id 2 --force
-
-# 重跑同一顆果實的三張照片
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\generate_decision_dataset.py --version v001 --fruit-id 140 --force
-
-# 只重試 status=error 的列
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\generate_decision_dataset.py --version v001 --only-errors
-```
-
-相同 `dataset version` 綁定完全相同的模型 manifest hash。更換任一權重後必須建立新版本，例如 `v002`。若照片 hash 相同，可用 `--labels-from v001` 將專家 grade 複製到新版本。照片內容變更時程式會拒絕覆寫；必須明確指定 `--fruit-id` 與 `--force --replace-image`，才會更新 hash 並清空該列 grade。
+操作手冊與目錄分工見 [`main/README.md`](main/README.md)；資料結構、Model Bundle、CSV schema、版本與 XGBoost feature allowlist 的正式契約見 [`docs/specs/decision-dataset-generator.md`](docs/specs/decision-dataset-generator.md)。
 
 ## YOLO 訓練工作區
 

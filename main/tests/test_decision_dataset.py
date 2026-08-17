@@ -1,5 +1,6 @@
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +13,12 @@ from decision_dataset import (  # noqa: E402
     DEFECT_CLASSES,
     EXPECTED_CLASSES,
     FruitInput,
+    GenerationMode,
+    LayoutPlan,
+    approve_model,
+    build_generation_request,
+    generate_dataset,
+    load_yaml,
     classes_match_role,
     generate_decision_dataset,
     plan_layout_migration,
@@ -23,6 +30,11 @@ from decision_dataset import (  # noqa: E402
     write_yaml_atomic,
 )
 from model_manager import ROLE_TASKS  # noqa: E402
+from decision_dataset.gui import (  # noqa: E402
+    LayoutPreviewState,
+    generation_request_from_gui,
+)
+from decision_dataset_cli import build_parser, request_from_args  # noqa: E402
 
 
 def successful_report():
@@ -60,6 +72,27 @@ class DecisionDatasetTests(unittest.TestCase):
         self.assertTrue(classes_match_role("roi", {0: "ROI"}))
         self.assertFalse(classes_match_role("roi", {0: "fruit"}))
         self.assertFalse(classes_match_role("roi", {0: "PF", 1: "ROI"}))
+
+    def test_manifest_candidate_can_be_approved_with_backup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest_path = self._make_manifest(root)
+            manifest = load_yaml(manifest_path)
+            manifest["models"]["roi"]["status"] = "candidate"
+            write_yaml_atomic(manifest_path, manifest)
+
+            with patch(
+                "decision_dataset.manifest.validate_model_record",
+                return_value=(manifest["models"]["roi"], []),
+            ):
+                approved = approve_model(manifest_path, root, "roi")
+
+            self.assertEqual(approved["status"], "approved_for_use")
+            self.assertEqual(
+                load_yaml(manifest_path)["models"]["roi"]["status"],
+                "approved_for_use",
+            )
+            self.assertTrue(manifest_path.with_suffix(".yaml.bak").is_file())
 
     def _make_layout(self, root: Path) -> Path:
         dataset = root / "DecisionLayerTrain"
@@ -145,7 +178,7 @@ class DecisionDatasetTests(unittest.TestCase):
             output = root / "decision_datasets"
             reports = [successful_report() for _ in range(3)]
 
-            with patch("decision_dataset.run_pipeline_batch", return_value=(reports, [])):
+            with patch("decision_dataset.generation.run_pipeline_batch", return_value=(reports, [])):
                 result = generate_decision_dataset(
                     repo_root=root,
                     dataset_root=dataset,
@@ -162,7 +195,7 @@ class DecisionDatasetTests(unittest.TestCase):
             rows[(1, 2)]["grade"] = "2"
             write_dataset_rows(csv_path, rows)
 
-            with patch("decision_dataset.run_pipeline_batch") as inference:
+            with patch("decision_dataset.generation.run_pipeline_batch") as inference:
                 resumed = generate_decision_dataset(
                     repo_root=root,
                     dataset_root=dataset,
@@ -189,7 +222,7 @@ class DecisionDatasetTests(unittest.TestCase):
                     load_weights=False,
                 )
             with patch(
-                "decision_dataset.run_pipeline_batch",
+                "decision_dataset.generation.run_pipeline_batch",
                 return_value=([successful_report()], []),
             ):
                 generate_decision_dataset(
@@ -220,7 +253,7 @@ class DecisionDatasetTests(unittest.TestCase):
             reports = [successful_report(), invalid, successful_report()]
 
             with patch(
-                "decision_dataset.run_pipeline_batch", return_value=(reports, [])
+                "decision_dataset.generation.run_pipeline_batch", return_value=(reports, [])
             ):
                 result = generate_decision_dataset(
                     repo_root=root,
@@ -236,6 +269,72 @@ class DecisionDatasetTests(unittest.TestCase):
             self.assertEqual(rows[(1, 2)]["status"], "error")
             self.assertEqual(rows[(1, 3)]["status"], "ok")
             self.assertEqual(result["errors"], 1)
+
+    def test_all_five_modes_map_to_engine_flags(self):
+        expected = {
+            GenerationMode.RESUME: (False, False, False),
+            GenerationMode.ONLY_ERRORS: (True, False, False),
+            GenerationMode.RERUN_FRUIT: (False, True, False),
+            GenerationMode.RERUN_VIEW: (False, True, False),
+            GenerationMode.REPLACE_IMAGE: (False, True, True),
+        }
+        for mode, flags in expected.items():
+            request = build_generation_request(
+                repo_root=".", dataset_root=".", model_manifest_path="manifest.yaml",
+                output_root=".", dataset_version="v001", mode=mode,
+                fruit_id=1 if mode in {GenerationMode.RERUN_FRUIT, GenerationMode.RERUN_VIEW, GenerationMode.REPLACE_IMAGE} else None,
+                view_id=2 if mode == GenerationMode.RERUN_VIEW else None,
+            )
+            actual = request.engine_flags()
+            self.assertEqual((actual["only_errors"], actual["force"], actual["replace_image"]), flags)
+
+    def test_layout_preview_is_invalidated_when_path_changes(self):
+        state = LayoutPreviewState(LayoutPlan(Path("dataset"), tuple(), tuple()))
+        self.assertTrue(state.can_apply)
+        state.invalidate()
+        self.assertFalse(state.can_apply)
+
+    def test_gui_and_cli_build_identical_generation_request(self):
+        values = {
+            "dataset_root": "DecisionLayerTrain", "manifest": "models/manifest.yaml",
+            "output_root": "decision_datasets", "version": "v002",
+            "labels_from": "v001", "mode": "重跑單張", "fruit_id": "12", "view_id": "3",
+        }
+        gui_request = generation_request_from_gui(values, MAIN_DIR.parent)
+        args = build_parser().parse_args([
+            "generate", "--version", "v002", "--dataset-root", "DecisionLayerTrain",
+            "--model-manifest", "models/manifest.yaml", "--output-root", "decision_datasets",
+            "--mode", "rerun_view", "--fruit-id", "12", "--view-id", "3", "--labels-from", "v001",
+        ])
+        self.assertEqual(gui_request, request_from_args(args))
+
+    def test_safe_stop_finishes_current_fruit_and_checkpoints(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dataset = self._make_layout(root)
+            second = dataset / "train" / "fruit_002"
+            second.mkdir()
+            for view_id in (1, 2, 3):
+                (second / f"img_{view_id:02d}.jpg").write_bytes(f"two-{view_id}".encode())
+            manifest = self._make_manifest(root)
+            cancel = threading.Event()
+
+            def infer(*_args, **_kwargs):
+                cancel.set()
+                return [successful_report() for _ in range(3)], []
+
+            request = build_generation_request(
+                repo_root=root, dataset_root=dataset, model_manifest_path=manifest,
+                output_root=root / "out", dataset_version="v001", load_weights=False,
+            )
+            with patch("decision_dataset.generation.run_pipeline_batch", side_effect=infer) as inference:
+                result = generate_dataset(request, cancel_requested=cancel.is_set)
+
+            self.assertTrue(result.stopped)
+            self.assertEqual(result.processed, 3)
+            self.assertEqual(inference.call_count, 1)
+            rows = read_dataset_rows(result.output)
+            self.assertEqual(set(rows), {(1, 1), (1, 2), (1, 3)})
 
 
 if __name__ == "__main__":
