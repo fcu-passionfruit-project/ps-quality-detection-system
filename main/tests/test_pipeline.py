@@ -24,7 +24,11 @@ from model_manager import (  # noqa: E402
     PassionFruitModelManager,
 )
 from main import _format_stage_summary, _validation_summary  # noqa: E402
-from pipeline import run_pipeline  # noqa: E402
+from pipeline import (  # noqa: E402
+    _segmentation_summary,
+    run_pipeline,
+    save_validation_result_batch,
+)
 
 
 class FakeBoxes:
@@ -43,6 +47,20 @@ class FakeResult:
 
 class FakeManager:
     device = "cpu"
+
+
+class FakeTensor:
+    def __init__(self, value):
+        self.value = np.asarray(value)
+
+    def detach(self):
+        return self
+
+    def cpu(self):
+        return self
+
+    def numpy(self):
+        return self.value
 
 
 class ImageProcessingTests(unittest.TestCase):
@@ -93,6 +111,47 @@ class ImageProcessingTests(unittest.TestCase):
 
 
 class PipelineTests(unittest.TestCase):
+    def test_segmentation_uses_same_class_mask_union(self):
+        boxes = type(
+            "SegmentationBoxes",
+            (),
+            {
+                "cls": FakeTensor([0, 0]),
+                "conf": FakeTensor([0.7, 0.9]),
+                "__len__": lambda self: 2,
+            },
+        )()
+        first = np.zeros((4, 4), dtype=np.float32)
+        first[:2, :2] = 1
+        second = np.zeros((4, 4), dtype=np.float32)
+        second[1:3, 1:3] = 1
+        masks = type(
+            "SegmentationMasks",
+            (),
+            {"data": FakeTensor([first, second])},
+        )()
+        result = type(
+            "SegmentationResult",
+            (),
+            {
+                "boxes": boxes,
+                "masks": masks,
+                "names": {0: "abrasion"},
+                "orig_shape": (4, 4),
+            },
+        )()
+
+        summary = _segmentation_summary(
+            result, 12.5, np.ones((4, 4), dtype=np.uint8)
+        )
+
+        self.assertEqual(summary["area_ratios"]["abrasion"], 7 / 16)
+        self.assertAlmostEqual(
+            summary["max_confidences"]["abrasion"], 0.9, places=6
+        )
+        self.assertEqual(summary["area_ratios"]["anthracnose"], 0.0)
+        self.assertEqual(len(summary["detections"]), 1)
+
     def test_missing_roi_stops_downstream_and_is_json_serializable(self):
         with tempfile.TemporaryDirectory() as temporary:
             image_path = Path(temporary) / "原圖.jpg"
@@ -123,6 +182,65 @@ class PipelineTests(unittest.TestCase):
             with patch("model_manager.YOLO", return_value=wrong_model):
                 with self.assertRaises(ModelTaskMismatch):
                     manager.load("roi", model_path)
+
+    def test_model_manager_passes_confidence_and_imgsz(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            model_path = Path(temporary) / "roi.pt"
+            model_path.touch()
+            calls = []
+
+            class PredictModel:
+                task = "detect"
+
+                def predict(self, **options):
+                    calls.append(options)
+                    return ["result"]
+
+            manager = PassionFruitModelManager(device="cpu")
+            manager._models["roi"] = (model_path.resolve(), PredictModel())
+            result = manager.predict(
+                "roi", model_path, "image", confidence=0.42, imgsz=736
+            )
+
+            self.assertEqual(result, "result")
+            self.assertEqual(calls[0]["conf"], 0.42)
+            self.assertEqual(calls[0]["imgsz"], 736)
+
+    def test_batch_results_share_timestamped_parent_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            reports = [
+                {"source": f"image_{index}.jpg", "ok": True}
+                for index in range(1, 4)
+            ]
+            artifacts_list = [
+                {"original": np.full((10, 10, 3), index, dtype=np.uint8)}
+                for index in range(1, 4)
+            ]
+
+            run_dirs = save_validation_result_batch(
+                temporary, reports, artifacts_list
+            )
+
+            self.assertEqual(
+                [path.name for path in run_dirs],
+                ["station_01", "station_02", "station_03"],
+            )
+            batch_dirs = {path.parent for path in run_dirs}
+            self.assertEqual(len(batch_dirs), 1)
+            batch_dir = batch_dirs.pop()
+            self.assertRegex(
+                batch_dir.name, r"^batch_\d{8}_\d{6}_\d{6}$"
+            )
+            for index, run_dir in enumerate(run_dirs, start=1):
+                self.assertTrue((run_dir / "original.jpg").is_file())
+                result = json.loads(
+                    (run_dir / "result.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(result["source"], f"image_{index}.jpg")
+                self.assertEqual(
+                    Path(result["artifacts"]["original"]),
+                    run_dir / "original.jpg",
+                )
 
 
 class GUIResultSummaryTests(unittest.TestCase):

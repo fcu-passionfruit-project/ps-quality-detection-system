@@ -28,6 +28,13 @@ ROLE_LABELS = {
     "defect": "局部瑕疵",
 }
 
+DEFECT_CLASSES = (
+    "abrasion",
+    "anthracnose",
+    "insect_bite",
+    "insect_track",
+)
+
 
 def _error_reason(error: Exception) -> str:
     return f"{type(error).__name__}: {error}"
@@ -59,47 +66,71 @@ def _segmentation_summary(
     boxes = getattr(result, "boxes", None)
     masks = getattr(result, "masks", None)
     detections = []
+    area_ratios = {class_name: 0.0 for class_name in DEFECT_CLASSES}
+    max_confidences = {class_name: 0.0 for class_name in DEFECT_CLASSES}
     if boxes is not None and len(boxes):
         classes = boxes.cls.detach().cpu().numpy().astype(int)
         confidences = boxes.conf.detach().cpu().numpy()
-        mask_data = (
-            masks.data.detach().cpu().numpy()
-            if masks is not None and getattr(masks, "data", None) is not None
-            else []
-        )
+        if masks is None or getattr(masks, "data", None) is None:
+            raise ValueError("局部瑕疵模型有偵測結果，但沒有回傳 segmentation masks。")
+        mask_data = masks.data.detach().cpu().numpy()
+        if len(mask_data) != len(classes):
+            raise ValueError("局部瑕疵模型回傳的 boxes 與 masks 數量不一致。")
         denominator = (
             int(np.count_nonzero(roi_mask))
             if roi_mask is not None
             else int(result.orig_shape[0] * result.orig_shape[1])
         )
+        if denominator <= 0:
+            raise ValueError("果實 ROI 面積為 0，無法計算局部瑕疵比例。")
+        target_shape = (
+            roi_mask.shape if roi_mask is not None else tuple(result.orig_shape)
+        )
+        union_masks = {
+            class_name: np.zeros(target_shape, dtype=bool)
+            for class_name in DEFECT_CLASSES
+        }
+        class_indexes = {}
         for index, (class_index, confidence) in enumerate(
             zip(classes, confidences, strict=False)
         ):
-            area_ratio = None
-            if index < len(mask_data) and denominator:
-                target_shape = (
-                    roi_mask.shape
-                    if roi_mask is not None
-                    else tuple(result.orig_shape)
-                )
-                resized = cv2.resize(
-                    mask_data[index],
-                    (target_shape[1], target_shape[0]),
-                    interpolation=cv2.INTER_NEAREST,
-                )
-                numerator = int(np.count_nonzero(resized > 0.5))
-                area_ratio = round(min(1.0, numerator / denominator), 8)
+            class_index = int(class_index)
+            class_name = _class_name(result.names, class_index)
+            if class_name not in union_masks:
+                raise ValueError(f"未知的局部瑕疵類別：{class_name}")
+            resized = cv2.resize(
+                mask_data[index],
+                (target_shape[1], target_shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            )
+            instance_mask = resized > 0.5
+            if roi_mask is not None:
+                instance_mask &= roi_mask > 0
+            union_masks[class_name] |= instance_mask
+            class_indexes[class_name] = class_index
+            max_confidences[class_name] = max(
+                max_confidences[class_name], round(float(confidence), 6)
+            )
+
+        for class_name in DEFECT_CLASSES:
+            numerator = int(np.count_nonzero(union_masks[class_name]))
+            area_ratio = round(min(1.0, numerator / denominator), 8)
+            area_ratios[class_name] = area_ratio
+            if class_name not in class_indexes:
+                continue
             detections.append(
                 {
-                    "class_name": _class_name(result.names, int(class_index)),
-                    "class_index": int(class_index),
-                    "confidence": round(float(confidence), 6),
+                    "class_name": class_name,
+                    "class_index": class_indexes[class_name],
+                    "confidence": max_confidences[class_name],
                     "mask_area_ratio": area_ratio,
                 }
             )
     return {
         "status": "ok",
         "detections": detections,
+        "area_ratios": area_ratios,
+        "max_confidences": max_confidences,
         "elapsed_ms": round(elapsed_ms, 2),
         "reason": None,
     }
@@ -113,10 +144,11 @@ def _predict(
     *,
     confidence: float | None = None,
     roi_mask: np.ndarray | None = None,
+    imgsz: int | None = None,
 ) -> tuple[dict, object]:
     started = perf_counter()
     result = manager.predict(
-        role, model_path, image, confidence=confidence
+        role, model_path, image, confidence=confidence, imgsz=imgsz
     )
     elapsed_ms = (perf_counter() - started) * 1000
     if role in {"color", "wrinkle"}:
@@ -142,10 +174,11 @@ def _predict_batch(
     images: list[np.ndarray],
     *,
     confidence: float | None = None,
+    imgsz: int | None = None,
 ) -> tuple[list, float]:
     started = perf_counter()
     results = manager.predict_batch(
-        role, model_path, images, confidence=confidence
+        role, model_path, images, confidence=confidence, imgsz=imgsz
     )
     elapsed_ms = (perf_counter() - started) * 1000
     return results, elapsed_ms
@@ -162,6 +195,15 @@ def _settings(parameters: dict | None) -> dict:
         values["clahe_tile_size"],
     )
     return values
+
+
+def _role_option(
+    model_options: dict[str, dict] | None,
+    role: str,
+    name: str,
+    default=None,
+):
+    return (model_options or {}).get(role, {}).get(name, default)
 
 
 def _prepare_roi(
@@ -294,6 +336,7 @@ def run_pipeline_batch(
     *,
     parameters: dict | None = None,
     manager: PassionFruitModelManager | None = None,
+    model_options: dict[str, dict] | None = None,
 ) -> tuple[list[dict], list[dict[str, np.ndarray]]]:
     started = perf_counter()
     settings = _settings(parameters)
@@ -346,7 +389,10 @@ def run_pipeline_batch(
             "roi",
             roi_model_path,
             source_images,
-            confidence=settings["confidence"],
+            confidence=_role_option(
+                model_options, "roi", "confidence", settings["confidence"]
+            ),
+            imgsz=_role_option(model_options, "roi", "imgsz"),
         )
     except Exception as error:
         reason = _error_reason(error)
@@ -449,7 +495,12 @@ def run_pipeline_batch(
 
         try:
             batch_results, batch_elapsed_ms = _predict_batch(
-                manager, role, model_path, role_inputs[role]
+                manager,
+                role,
+                model_path,
+                role_inputs[role],
+                confidence=_role_option(model_options, role, "confidence"),
+                imgsz=_role_option(model_options, role, "imgsz"),
             )
         except Exception as error:
             reason = _error_reason(error)
@@ -590,18 +641,20 @@ def run_single_model(
     return report, artifacts
 
 
-def save_validation_result(
-    output_root: str | Path,
-    report: dict,
-    artifacts: dict[str, np.ndarray],
-) -> Path:
+def _validation_output_root(output_root: str | Path) -> Path:
     root = Path(output_root).resolve()
     if not root.exists():
         root.mkdir(parents=True)
     if not root.is_dir():
         raise NotADirectoryError(f"輸出位置不是資料夾：{root}")
-    run_name = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    run_dir = root / run_name
+    return root
+
+
+def _save_validation_result_to_dir(
+    run_dir: Path,
+    report: dict,
+    artifacts: dict[str, np.ndarray],
+) -> Path:
     run_dir.mkdir()
     artifact_paths = {}
     for name, image in artifacts.items():
@@ -609,12 +662,23 @@ def save_validation_result(
             continue
         path = write_image(run_dir / f"{name}.jpg", image)
         artifact_paths[name] = str(path)
-    report = {**report, "artifacts": artifact_paths}
+    saved_report = {**report, "artifacts": artifact_paths}
     (run_dir / "result.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2),
+        json.dumps(saved_report, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return run_dir
+
+
+def save_validation_result(
+    output_root: str | Path,
+    report: dict,
+    artifacts: dict[str, np.ndarray],
+) -> Path:
+    root = _validation_output_root(output_root)
+    run_name = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    run_dir = root / run_name
+    return _save_validation_result_to_dir(run_dir, report, artifacts)
 
 
 def save_validation_result_batch(
@@ -622,7 +686,15 @@ def save_validation_result_batch(
     reports: list[dict],
     artifacts_list: list[dict[str, np.ndarray]],
 ) -> list[Path]:
+    root = _validation_output_root(output_root)
+    batch_name = datetime.now().strftime("batch_%Y%m%d_%H%M%S_%f")
+    batch_dir = root / batch_name
+    batch_dir.mkdir()
     return [
-        save_validation_result(output_root, report, artifacts)
-        for report, artifacts in zip(reports, artifacts_list, strict=True)
+        _save_validation_result_to_dir(
+            batch_dir / f"station_{index:02d}", report, artifacts
+        )
+        for index, (report, artifacts) in enumerate(
+            zip(reports, artifacts_list, strict=True), start=1
+        )
     ]
