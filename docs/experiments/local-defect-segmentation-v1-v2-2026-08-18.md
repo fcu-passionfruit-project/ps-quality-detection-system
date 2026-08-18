@@ -1,15 +1,15 @@
-# 局部瑕疵 segmentation v1／v2 實驗紀錄
+# `v1_defect` Dataset 第 1／2 次 segmentation 訓練實驗紀錄
 
 - 實驗日期：2026-08-17 至 2026-08-18
 - 紀錄日期：2026-08-18
 - 任務：百香果局部瑕疵 instance segmentation
-- 結論：兩版模型都學到部分瑕疵特徵，但目前 Dataset 的類別分布、來源識別與 split 完整性不足以支援正式驗收。`models/v2_defect.pt` 保留為實驗權重，不核准為正式 `defect` 模型。
+- 結論：兩次訓練都使用同一份 `training/packages/v1_defect`，模型有學到部分瑕疵特徵，但目前 Dataset 的類別分布、來源識別與 split 完整性不足以支援正式驗收。兩個權重都已封存，不核准為正式 `defect` 模型。
 
 ## 實驗目的
 
-比較相同 Dataset 與模型架構下，將訓練 `imgsz` 從 `640` 提高至 `1024` 是否能改善小型局部瑕疵的 segmentation 表現。
+比較同一份 `v1_defect` Dataset 與相同模型架構下，將訓練 `imgsz` 從 `640` 提高至 `1024` 是否能改善小型局部瑕疵的 segmentation 表現。
 
-這次實驗未形成只改 `imgsz` 的受控 A／B 測試。v2 同時將 `batch` 從固定 `16` 改成自動估算的 `-1`，checkpoint 顯示實際使用 `batch=1`。因此 v1 與 v2 的差異包含輸入尺寸與 batch size，不能把結果完全歸因於解析度。
+這次實驗未形成只改 `imgsz` 的受控 A／B 測試。第 2 次訓練同時將 `batch` 從固定 `16` 改成自動估算的 `-1`，checkpoint 顯示實際使用 `batch=1`。因此兩次訓練的差異包含輸入尺寸與 batch size，不能把結果完全歸因於解析度。
 
 ## Dataset
 
@@ -21,6 +21,8 @@
 - 前處理：Resize to `640 × 640`，採 Fit within，實際匯出影像會保留長寬比，長邊最多為 `640 px`
 - train augmentation：水平／垂直翻轉、90 度旋轉與亮度 ±10%，每張來源影像產生 3 個版本
 - 設定檔：`training/packages/v1_defect/data.yaml`
+
+Roboflow 只擴增 train，valid 與 test 數量維持不變，這項行為符合模型評估原則。validation／test 必須保留未擴增的固定資料，才不會讓人工合成變化汙染泛化評估。此 Dataset 的問題在於 rare class 樣本不足、來源識別不完整與 Fruit 跨 split，並非 valid／test 沒有套用 augmentation。
 
 ### Split 與 instance 分布
 
@@ -43,12 +45,12 @@
 
 ## 訓練設定
 
-兩版共同使用 `YOLO26s-seg`、`100 epochs`、`seed=0`、`deterministic=true`、相同 Dataset 與相同 augmentation 設定。完整參數分別保存在：
+兩次訓練共同使用 `YOLO26s-seg`、`100 epochs`、`seed=0`、`deterministic=true`、相同 Dataset 與相同 augmentation 設定。兩個 `args.yaml` 的 `data` 都指向 `training/packages/v1_defect/data.yaml`。完整參數分別保存在：
 
-- `training/runs/segment/v1_defect/args.yaml`
-- `training/runs/segment/v2_defect/args.yaml`
+- `training/runs/segment/v1_defect 訓練結果_1/args.yaml`
+- `training/runs/segment/v1_defect 訓練結果_2/args.yaml`
 
-| 項目 | v1 | v2 |
+| 項目 | 第 1 次訓練 | 第 2 次訓練 |
 | --- | ---: | ---: |
 | 模型 | `yolo26s-seg.pt` | `yolo26s-seg.pt` |
 | `imgsz` | 640 | 1024 |
@@ -58,13 +60,13 @@
 | 總時間 | 3456.64 秒，約 57.6 分鐘 | 22825 秒，約 380.4 分鐘 |
 | 相對耗時 | 1.0× | 6.6× |
 
-Roboflow 匯出影像的長邊最多只有 `640 px`。v2 設為 `1024` 時，訓練流程會放大既有像素，不會恢復原始影像已經失去的細節。
+Roboflow 匯出影像的長邊最多只有 `640 px`。第 2 次訓練設為 `1024` 時，訓練流程會放大既有像素，不會恢復原始影像已經失去的細節。
 
 ## 指標結果
 
 ### 訓練保存的 best checkpoint
 
-| 指標 | v1 best | v2 best |
+| 指標 | 第 1 次 best | 第 2 次 best |
 | --- | ---: | ---: |
 | Box precision | 0.55709 | 0.25761 |
 | Box recall | 0.34715 | 0.29261 |
@@ -75,32 +77,32 @@ Roboflow 匯出影像的長邊最多只有 `640 px`。v2 設為 `1024` 時，訓
 | Mask mAP50 | 0.27991 | 0.22871 |
 | Mask mAP50-95 | 0.12460 | 0.11357 |
 
-訓練 loss 持續下降，代表模型確實在擬合訓練資料；validation loss 後期回升且 AP 沒有同步改善，顯示泛化開始惡化。v2 增加約 `6.6×` 訓練時間後，best checkpoint 的主要 Box 與 Mask 指標仍低於 v1。
+訓練 loss 持續下降，代表模型確實在擬合訓練資料；validation loss 後期回升且 AP 沒有同步改善，顯示泛化開始惡化。第 2 次訓練增加約 `6.6×` 訓練時間後，best checkpoint 的主要 Box 與 Mask 指標仍低於第 1 次訓練。
 
 ### 固定驗證流程重跑
 
-為了取得可比較的逐類結果，兩個 `best.pt` 都在同一個 valid split、`batch=1`、`workers=0`、相同 Ultralytics `8.4.46` 與 NVIDIA GeForce RTX 3070 上重跑。v2 另外以 `imgsz=640` 驗證一次，觀察相同推論尺寸下的表現。
+為了取得可比較的逐類結果，兩個 `best.pt` 都在同一個 valid split、`batch=1`、`workers=0`、相同 Ultralytics `8.4.46` 與 NVIDIA GeForce RTX 3070 上重跑。第 2 次訓練的權重另外以 `imgsz=640` 驗證一次，觀察相同推論尺寸下的表現。
 
 | 權重／驗證尺寸 | Mask precision | Mask recall | Mask mAP50 | Mask mAP50-95 |
 | --- | ---: | ---: | ---: | ---: |
-| v1／640 | 0.55235 | 0.31600 | 0.27669 | 0.12730 |
-| v2／1024 | 0.24875 | 0.29073 | 0.22871 | 0.11367 |
-| v2／640 | 0.35830 | 0.24534 | 0.24992 | 0.13084 |
+| 第 1 次／640 | 0.55235 | 0.31600 | 0.27669 | 0.12730 |
+| 第 2 次／1024 | 0.24875 | 0.29073 | 0.22871 | 0.11367 |
+| 第 2 次／640 | 0.35830 | 0.24534 | 0.24992 | 0.13084 |
 
-v2 在 `640` 推論時的 Mask mAP50-95 比 v1 高 `0.00354`，但 valid 只有 `97` 張，且 `insect_bite` 只有 1 個 instance。這個差距不足以認定 v2 有穩定改善。
+第 2 次訓練的權重在 `640` 推論時，Mask mAP50-95 比第 1 次高 `0.00354`，但 valid 只有 `97` 張，且 `insect_bite` 只有 1 個 instance。這個差距不足以認定第 2 次訓練有穩定改善。
 
 ### 逐類 Mask 指標
 
 | 權重／驗證尺寸 | 類別 | Precision | Recall | mAP50 | mAP50-95 |
 | --- | --- | ---: | ---: | ---: | ---: |
-| v1／640 | `abrasion` | 0.443 | 0.414 | 0.366 | 0.12433 |
-| v1／640 | `anthracnose` | 0.462 | 0.574 | 0.488 | 0.26875 |
-| v1／640 | `insect_bite` | 1.000 | 0.000 | 0.0199 | 0.01592 |
-| v1／640 | `insect_track` | 0.304 | 0.276 | 0.233 | 0.10019 |
-| v2／1024 | `abrasion` | 0.390 | 0.391 | 0.324 | 0.11515 |
-| v2／1024 | `anthracnose` | 0.435 | 0.417 | 0.432 | 0.28231 |
-| v2／1024 | `insect_bite` | 0.000 | 0.000 | 0.000 | 0.00000 |
-| v2／1024 | `insect_track` | 0.170 | 0.355 | 0.158 | 0.05722 |
+| 第 1 次／640 | `abrasion` | 0.443 | 0.414 | 0.366 | 0.12433 |
+| 第 1 次／640 | `anthracnose` | 0.462 | 0.574 | 0.488 | 0.26875 |
+| 第 1 次／640 | `insect_bite` | 1.000 | 0.000 | 0.0199 | 0.01592 |
+| 第 1 次／640 | `insect_track` | 0.304 | 0.276 | 0.233 | 0.10019 |
+| 第 2 次／1024 | `abrasion` | 0.390 | 0.391 | 0.324 | 0.11515 |
+| 第 2 次／1024 | `anthracnose` | 0.435 | 0.417 | 0.432 | 0.28231 |
+| 第 2 次／1024 | `insect_bite` | 0.000 | 0.000 | 0.000 | 0.00000 |
+| 第 2 次／1024 | `insect_track` | 0.170 | 0.355 | 0.158 | 0.05722 |
 
 `insect_bite` 的 Recall 皆為 `0`。這項結果主要反映 valid 只有單一 instance，現階段無法判斷模型是否能學習此類別。`abrasion` 與 `insect_track` 已有可量測訊號，但仍有大量漏偵測。
 
@@ -115,29 +117,30 @@ Ultralytics `8.4.46` 的 segmentation validator 會把預測交給 `ConfusionMat
 
 原始圖表保存在：
 
-- `training/runs/segment/v1_defect/confusion_matrix.png`
-- `training/runs/segment/v1_defect/confusion_matrix_normalized.png`
-- `training/runs/segment/v2_defect/confusion_matrix.png`
-- `training/runs/segment/v2_defect/confusion_matrix_normalized.png`
+- `training/runs/segment/v1_defect 訓練結果_1/confusion_matrix.png`
+- `training/runs/segment/v1_defect 訓練結果_1/confusion_matrix_normalized.png`
+- `training/runs/segment/v1_defect 訓練結果_2/confusion_matrix.png`
+- `training/runs/segment/v1_defect 訓練結果_2/confusion_matrix_normalized.png`
 
 ## 權重追溯與核准狀態
 
 | 檔案 | SHA-256 |
 | --- | --- |
-| `training/runs/segment/v1_defect/weights/best.pt` | `3031fdac2261fa4ba154f5c503d457cb46531b93873a7c42aed0c2e1eec109a7` |
-| `training/runs/segment/v2_defect/weights/best.pt` | `6733cd31fb70be05c284e0cb59c522d0ed94ad931ab9ebe0dd20dd339e5ffecf` |
-| `models/v2_defect.pt` | `6733cd31fb70be05c284e0cb59c522d0ed94ad931ab9ebe0dd20dd339e5ffecf` |
+| `training/runs/segment/v1_defect 訓練結果_1/weights/best.pt` | `3031fdac2261fa4ba154f5c503d457cb46531b93873a7c42aed0c2e1eec109a7` |
+| `models/封存YOLO模型/0817/v1_defect.pt` | `3031fdac2261fa4ba154f5c503d457cb46531b93873a7c42aed0c2e1eec109a7` |
+| `training/runs/segment/v1_defect 訓練結果_2/weights/best.pt` | `6733cd31fb70be05c284e0cb59c522d0ed94ad931ab9ebe0dd20dd339e5ffecf` |
+| `models/封存YOLO模型/0818/v1_defect-2.pt` | `6733cd31fb70be05c284e0cb59c522d0ed94ad931ab9ebe0dd20dd339e5ffecf` |
 
-`models/v2_defect.pt` 與 v2 `best.pt` 的 SHA-256 相同，來源已確認。檔案位於 `models/` 不等於通過驗收；目前不把它寫入 `models/manifest.yaml` 的 `approved_for_use` role。
+兩個封存權重分別與對應的 `best.pt` SHA-256 相同，來源已確認。模型根目錄目前沒有正式局部瑕疵權重，`models/manifest.yaml` 也維持未核准狀態。
 
 ## 診斷結論
 
-1. 兩版模型已有學習訊號，`abrasion`、`anthracnose` 與 `insect_track` 都出現非零 Mask AP。
-2. v2 使用的影像沒有超過 `640 px` 的原始細節，`imgsz=1024` 主要增加計算量。
-3. v1 與 v2 同時改變 `imgsz` 與 batch size，無法把差異單獨歸因於解析度。
+1. 兩次訓練的模型已有學習訊號，`abrasion`、`anthracnose` 與 `insect_track` 都出現非零 Mask AP。
+2. 第 2 次訓練仍使用 `v1_defect`，影像沒有超過 `640 px` 的原始細節，`imgsz=1024` 主要增加計算量。
+3. 兩次訓練同時改變 `imgsz` 與 batch size，無法把差異單獨歸因於解析度。
 4. `insect_bite` 樣本嚴重不足，valid／test 各 1 個 instance，該類別無法驗收。
 5. 已確認至少 6 個具 Fruit ID 的來源跨 split，另有大量影像缺少可追溯 ID。現有 validation／test 結果可能受資料洩漏影響。
-6. v2 沒有可靠、全面且足以抵銷成本的改善，因此維持實驗狀態。
+6. 第 2 次訓練沒有可靠、全面且足以抵銷成本的改善，因此維持封存實驗狀態。
 
 ## 下一版實驗決策
 
@@ -147,7 +150,7 @@ Ultralytics `8.4.46` 的 segmentation validator 會把預測交給 `ConfusionMat
 2. 先按 Fruit ID 分組切分 train／valid／test，再只對 train 套用 augmentation，阻擋同一 Fruit 或其增強版本跨 split。
 3. 補充 `insect_bite` 與 `anthracnose` 的獨立原始案例；valid 與 test 必須各自包含足以計算逐類指標的多個獨立 Fruit，不再接受單一 instance 驗收。
 4. 人工抽查四類 polygon，特別核對 `abrasion` 與 `insect_track` 的定義邊界、漏標與重疊標註。抽查結果完成前，不把標註品質視為已確認根因。
-5. 若要測試 `imgsz=1024`，從長邊至少 `1024 px` 的原始影像重新匯出，避免先縮至 `640` 再放大。
+5. 新版 Roboflow Dataset 不設定強制 Resize，直接以原始解析度匯出。訓練時再由 Ultralytics 依 `imgsz` 等比例縮放並補邊，避免在 Dataset 匯出階段先永久丟失細節。測試 `imgsz=1024` 時，應確認原始影像本身具有足夠解析度，並記錄實際影像尺寸分布。
 6. 下一次 A／B 實驗固定相同 model、split、seed、batch、augmentation、epochs、驗證尺寸與 confidence 設定，一次只改一個變因。
 7. 超參數凍結後才使用獨立 test split；報告逐類 Box／Mask 指標，並額外量測 `defect_mask_pixels / fruit_roi_pixels` 的誤差與偏差，對齊 Decision Dataset 的正式特徵用途。
 
@@ -163,11 +166,11 @@ Ultralytics `8.4.46` 的 segmentation validator 會把預測交給 `ConfusionMat
 以下命令是本紀錄使用的固定驗證流程：
 
 ```powershell
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -c "from ultralytics import YOLO; m=YOLO(r'training/runs/segment/v1_defect/weights/best.pt'); r=m.val(data=r'training/packages/v1_defect/data.yaml', split='val', imgsz=640, batch=1, workers=0, device=0, plots=False, save_json=False, verbose=True, project=r'training/runs/segment', name='diagnostic_v1', exist_ok=True); print(r.results_dict); print('MAPS', r.seg.maps.tolist())"
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -c "from ultralytics import YOLO; m=YOLO(r'training/runs/segment/v1_defect 訓練結果_1/weights/best.pt'); r=m.val(data=r'training/packages/v1_defect/data.yaml', split='val', imgsz=640, batch=1, workers=0, device=0, plots=False, save_json=False, verbose=True, project=r'training/runs/segment', name='diagnostic_v1_run1', exist_ok=True); print(r.results_dict); print('MAPS', r.seg.maps.tolist())"
 
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -c "from ultralytics import YOLO; m=YOLO(r'training/runs/segment/v2_defect/weights/best.pt'); r=m.val(data=r'training/packages/v1_defect/data.yaml', split='val', imgsz=1024, batch=1, workers=0, device=0, plots=False, save_json=False, verbose=True, project=r'training/runs/segment', name='diagnostic_v2', exist_ok=True); print(r.results_dict); print('MAPS', r.seg.maps.tolist())"
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -c "from ultralytics import YOLO; m=YOLO(r'training/runs/segment/v1_defect 訓練結果_2/weights/best.pt'); r=m.val(data=r'training/packages/v1_defect/data.yaml', split='val', imgsz=1024, batch=1, workers=0, device=0, plots=False, save_json=False, verbose=True, project=r'training/runs/segment', name='diagnostic_v1_run2', exist_ok=True); print(r.results_dict); print('MAPS', r.seg.maps.tolist())"
 
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -c "from ultralytics import YOLO; m=YOLO(r'training/runs/segment/v2_defect/weights/best.pt'); r=m.val(data=r'training/packages/v1_defect/data.yaml', split='val', imgsz=640, batch=1, workers=0, device=0, plots=False, save_json=False, verbose=False, project=r'training/runs/segment', name='diagnostic_v2_at640', exist_ok=True); print(r.results_dict); print('MAPS', r.seg.maps.tolist())"
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -c "from ultralytics import YOLO; m=YOLO(r'training/runs/segment/v1_defect 訓練結果_2/weights/best.pt'); r=m.val(data=r'training/packages/v1_defect/data.yaml', split='val', imgsz=640, batch=1, workers=0, device=0, plots=False, save_json=False, verbose=False, project=r'training/runs/segment', name='diagnostic_v1_run2_at640', exist_ok=True); print(r.results_dict); print('MAPS', r.seg.maps.tolist())"
 ```
 
 ## Repository 邊界
