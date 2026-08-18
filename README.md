@@ -192,6 +192,8 @@ model.train(
 
 訓練完成並通過驗收的模型移至 Google Drive 的 `models/`；舊模型放在日期命名的子目錄中。
 
+局部瑕疵 segmentation 的 v1／v2 訓練設定、逐類指標、Dataset 問題與後續實驗決策，見 [`docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md`](docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md)。
+
 ## 正式權重
 
 所有訓練完成的權重由 Google Drive 的 `models/` 管理，不隨 GitHub repository 發布。日期命名的子目錄保存舊模型紀錄；目前使用的模型應放在 `models/` 的主要位置，並由 GUI 選取。
