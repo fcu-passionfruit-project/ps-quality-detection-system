@@ -4,7 +4,7 @@
 
 本 repository 是百香果專題檢測層的 GitHub 程式來源，保留 `main/` 模型檢測工具、可執行規格與必要文件。大型資料集、模型及訓練產物由團隊的 [Google Drive 共用資料夾](https://drive.google.com/drive/folders/1USQK25FW7c0lLfCK1j9dGp9byPnZ5UZ9?usp=sharing) 管理。
 
-架構內容整理自 Notion 的[「檢測層－Multi-stage Pipeline 架構設計」](https://app.notion.com/p/38d2e71fbc158042bc2bc3e6e43e9bbb)，並依目前正式硬體修正：影像來源是手機相機頁在三個停止拍攝站點取得的 `img_01.jpg`、`img_02.jpg`、`img_03.jpg`，不是舊版 ESP32-CAM 六視角連拍。
+目標架構與模型分工以 Notion 的[「檢測層－Multi-stage Pipeline」](https://app.notion.com/p/38d2e71fbc158042bc2bc3e6e43e9bbb)中「Pipeline 架構與分工」為準。影像來源是手機相機頁在三個停止拍攝站點取得的 `img_01.jpg`、`img_02.jpg`、`img_03.jpg`。
 
 ## Repository 分工
 
@@ -37,33 +37,31 @@ Stage 1：YOLO Detect 定位百香果 ROI（imgsz=640）
                   v
 OpenCV：從原始高解析照片裁切 ROI + 圓形遮罩
                   |
-          +-------+-------------------+
-          |                           |
-          v                           v
-顏色 YOLO-cls                    灰階 + CLAHE
-imgsz=320                            |
-          |                           v
-          |                    皺褶 YOLO-cls
-          |                    imgsz=448
-          |                           |
-          +-------------+-------------+
-                        |
-                        v
-         局部瑕疵 multi-class YOLO Segment
-         炭疽病／畫圖蟲／擦傷／蟲咬，imgsz=640
-                        |
-                        v
+                  v
+顏色 YOLO Classification（imgsz=320，三張照片 batch）
+                  |
+                  v
+灰階 + CLAHE -> 皺褶 YOLO Classification
+                  （imgsz=320，三張照片 batch）
+                  |
+                  v
+局部瑕疵 YOLO26s-seg multi-class
+炭疽病／畫圖蟲／擦傷／蟲咬（imgsz=1024，三張照片 batch）
+                  |
+                  v
         每張照片各產生一列特徵與 confidence
-                        |
-                        v
+                  |
+                  v
        XGBoost：每張照片各預測 0 / 1 / 2 / 3
-                        |
-                        v
+                  |
+                  v
           同一顆果實取三張照片的最低級距
-                        |
-                        v
+                  |
+                  v
         Django classify_fruit -> ESP32 -> MG996R
 ```
+
+PC 推論服務啟動時載入全部模型。模型之間依顏色、皺褶、局部瑕疵的順序執行；同一個模型一次處理同一顆 Fruit 的三張照片。OpenCV 前處理可使用 multithreading，模型推論先維持序列式 batch 基準。
 
 ### Stage 1：ROI 定位
 
@@ -73,7 +71,7 @@ imgsz=320                            |
 - 目標類別：單一 class `PF` 或 `ROI`，兩種命名皆可。
 - 正式權重由 Google Drive 的 `models/` 管理，執行時透過 GUI 選取。
 
-Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的原始解析度照片，取得高細節 ROI，不可從已縮小的預覽圖再次裁切。每張照片保存 `fruit_area_ratio = bbox_width × bbox_height / (image_width × image_height)`；它代表百香果 bounding box 在該張照片中的面積比例，供 XGBoost 理解相對大小，不是平方公分或真實表面積。
+Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的原始解析度照片，取得高細節 ROI，不可從已縮小的預覽圖再次裁切。Stage 1 回傳 `roi_area_ratio = bbox_width × bbox_height / (image_width × image_height)`；寫入 Decision Dataset 時對應為 `fruit_area_ratio`。它代表百香果 bounding box 在該張照片中的面積比例，供 XGBoost 理解相對大小，不是平方公分或真實表面積。
 
 ### OpenCV 中介層
 
@@ -112,8 +110,8 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 ## 推論與效能策略
 
 - PC 推論服務啟動時一次載入所有正式模型，不可每次收到三張照片才重新載入。
-- 同一顆百香果的三張照片，在同一個模型中優先使用 batch inference。
-- 不同模型先建立穩定的循序執行基準，再實測 multithreading 是否真的降低總延遲。
+- 模型之間依顏色、皺褶、局部瑕疵循序執行；同一個模型使用三張照片的 batch inference。
+- OpenCV 前處理可使用 multithreading；模型推論先建立穩定的序列式 batch 基準，再實測多模型 multithreading 是否降低總延遲。
 - PyTorch／CUDA 與 OpenCV 底層運算可能釋放 GIL，但多執行緒不保證更快，必須記錄每個模型與整條 pipeline 的耗時。
 - 暫不使用 multiprocessing 同時載入多份模型，避免重複占用 RAM／VRAM。
 - TensorRT、OpenVINO、FP16 與 INT8 屬於 pipeline 正確且準確率通過後的最佳化工作。
@@ -192,7 +190,21 @@ model.train(
 
 訓練完成並通過驗收的模型移至 Google Drive 的 `models/`；舊模型放在日期命名的子目錄中。
 
-局部瑕疵 `v1_defect` Dataset 的第 1／2 次訓練設定、逐類指標、Dataset 問題與後續實驗決策，見 [`docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md`](docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md)。
+局部瑕疵 `v1_defect` Dataset 的第 1／2 次歷史訓練設定與效能分析，見 [`docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md`](docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md)。
+
+新版局部瑕疵 Dataset 從 Roboflow 以原始解析度匯出至 `training/packages/v2_defect_raw`，不在 Roboflow 套用 preprocessing 或 augmentation。只對 train 的少數類別來源影像產生離線變化：
+
+```powershell
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s tools\augment_rare_classes.py --input training\packages\v2_defect_raw --output training\packages\v2_defect_targeted --anthracnose-copies 2 --insect-bite-copies 5 --seed 0
+```
+
+工具不修改來源 Dataset；valid 與 test 會原樣複製。新模型完成訓練後，再於 `docs/experiments/` 建立獨立實驗紀錄並加入 README 連結。
+
+targeted Dataset 完成並通過檢查後，使用固定參數訓練完整改善方案：
+
+```powershell
+yolo task=segment mode=train model=yolo26s-seg.pt data=training/packages/v2_defect_targeted/data.yaml project=training/runs/segment name=v2_defect_targeted_weighted_cp_s1024 epochs=100 imgsz=1024 batch=1 device=0 workers=8 seed=0 deterministic=True cls_pw=0.5 copy_paste=0.3 copy_paste_mode=mixup hsv_h=0.015 hsv_s=0.7 hsv_v=0.4 degrees=0.0 translate=0.1 scale=0.5 shear=0.0 perspective=0.0 flipud=0.0 fliplr=0.5 bgr=0.0 mosaic=1.0 mixup=0.0 cutmix=0.0 close_mosaic=10
+```
 
 ## 正式權重
 

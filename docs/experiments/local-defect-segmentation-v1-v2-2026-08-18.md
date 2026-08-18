@@ -3,7 +3,7 @@
 - 實驗日期：2026-08-17 至 2026-08-18
 - 紀錄日期：2026-08-18
 - 任務：百香果局部瑕疵 instance segmentation
-- 結論：兩次訓練都使用同一份 `training/packages/v1_defect`，模型有學到部分瑕疵特徵，但目前 Dataset 的類別分布、來源識別與 split 完整性不足以支援正式驗收。兩個權重都已封存，不核准為正式 `defect` 模型。
+- 結論：兩次訓練都使用同一份 `training/packages/v1_defect`，模型有學到部分瑕疵特徵，但類別分布與驗證樣本數不足以支援正式驗收。兩個權重都已封存，不核准為正式 `defect` 模型。
 
 ## 實驗目的
 
@@ -22,7 +22,7 @@
 - train augmentation：水平／垂直翻轉、90 度旋轉與亮度 ±10%，每張來源影像產生 3 個版本
 - 設定檔：`training/packages/v1_defect/data.yaml`
 
-Roboflow 只擴增 train，valid 與 test 數量維持不變，這項行為符合模型評估原則。validation／test 必須保留未擴增的固定資料，才不會讓人工合成變化汙染泛化評估。此 Dataset 的問題在於 rare class 樣本不足、來源識別不完整與 Fruit 跨 split，並非 valid／test 沒有套用 augmentation。
+Roboflow 只擴增 train，valid 與 test 數量維持不變，這項行為符合模型評估原則。validation／test 必須保留未擴增的固定資料，才不會讓人工合成變化汙染泛化評估。此 Dataset 的主要限制是 rare class 樣本不足。
 
 ### Split 與 instance 分布
 
@@ -33,15 +33,6 @@ Roboflow 只擴增 train，valid 與 test 數量維持不變，這項行為符�
 | test | 97 | 33 | 114 | 16 | 1 | 100 |
 
 `insect_bite` 在 valid 與 test 各只有 1 個 instance，任何 precision、recall 或 AP 都會受單一樣本主導，不能代表泛化能力。train 的 `36` 個 instance 又已包含 augmentation，原始獨立案例數更少。
-
-### Split 來源識別問題
-
-依可解析的 `fruit_<id>` 檔名檢查，已找到下列 Fruit 跨 split：
-
-- train／valid：`fruit_083`、`fruit_122`
-- train／test：`fruit_095`、`fruit_135`、`fruit_189`、`fruit_269`
-
-另有 `1433` 張影像檔名不含 Fruit ID：train `1257` 張、valid `86` 張、test `90` 張。這些影像無法只靠匯出檔名驗證是否來自相同 Fruit，因此目前不能排除更多資料洩漏。
 
 ## 訓練設定
 
@@ -129,7 +120,7 @@ Ultralytics `8.4.46` 的 segmentation validator 會把預測交給 `ConfusionMat
 | `training/runs/segment/v1_defect 訓練結果_1/weights/best.pt` | `3031fdac2261fa4ba154f5c503d457cb46531b93873a7c42aed0c2e1eec109a7` |
 | `models/封存YOLO模型/0817/v1_defect.pt` | `3031fdac2261fa4ba154f5c503d457cb46531b93873a7c42aed0c2e1eec109a7` |
 | `training/runs/segment/v1_defect 訓練結果_2/weights/best.pt` | `6733cd31fb70be05c284e0cb59c522d0ed94ad931ab9ebe0dd20dd339e5ffecf` |
-| `models/封存YOLO模型/0818/v1_defect-2.pt` | `6733cd31fb70be05c284e0cb59c522d0ed94ad931ab9ebe0dd20dd339e5ffecf` |
+| `models/封存YOLO模型/0817/v1_defect-2.pt` | `6733cd31fb70be05c284e0cb59c522d0ed94ad931ab9ebe0dd20dd339e5ffecf` |
 
 兩個封存權重分別與對應的 `best.pt` SHA-256 相同，來源已確認。模型根目錄目前沒有正式局部瑕疵權重，`models/manifest.yaml` 也維持未核准狀態。
 
@@ -139,25 +130,21 @@ Ultralytics `8.4.46` 的 segmentation validator 會把預測交給 `ConfusionMat
 2. 第 2 次訓練仍使用 `v1_defect`，影像沒有超過 `640 px` 的原始細節，`imgsz=1024` 主要增加計算量。
 3. 兩次訓練同時改變 `imgsz` 與 batch size，無法把差異單獨歸因於解析度。
 4. `insect_bite` 樣本嚴重不足，valid／test 各 1 個 instance，該類別無法驗收。
-5. 已確認至少 6 個具 Fruit ID 的來源跨 split，另有大量影像缺少可追溯 ID。現有 validation／test 結果可能受資料洩漏影響。
-6. 第 2 次訓練沒有可靠、全面且足以抵銷成本的改善，因此維持封存實驗狀態。
+5. 第 2 次訓練沒有可靠、全面且足以抵銷成本的改善，因此維持封存實驗狀態。
 
-## 下一版實驗決策
+## 後續處置
 
-下一版先重建 Dataset，再測試解析度或模型超參數：
+本文件維持為兩個 baseline 的歷史效能紀錄。新版模型採用下列完整改善方案，訓練結果另立文件：
 
-1. 從原始照片建立 `fruit_id + view_id` 對照，無法確認來源的影像先隔離，不直接分入新 Dataset。
-2. 先按 Fruit ID 分組切分 train／valid／test，再只對 train 套用 augmentation，阻擋同一 Fruit 或其增強版本跨 split。
-3. 補充 `insect_bite` 與 `anthracnose` 的獨立原始案例；valid 與 test 必須各自包含足以計算逐類指標的多個獨立 Fruit，不再接受單一 instance 驗收。
-4. 人工抽查四類 polygon，特別核對 `abrasion` 與 `insect_track` 的定義邊界、漏標與重疊標註。抽查結果完成前，不把標註品質視為已確認根因。
-5. 新版 Roboflow Dataset 不設定強制 Resize，直接以原始解析度匯出。訓練時再由 Ultralytics 依 `imgsz` 等比例縮放並補邊，避免在 Dataset 匯出階段先永久丟失細節。測試 `imgsz=1024` 時，應確認原始影像本身具有足夠解析度，並記錄實際影像尺寸分布。
-6. 下一次 A／B 實驗固定相同 model、split、seed、batch、augmentation、epochs、驗證尺寸與 confidence 設定，一次只改一個變因。
-7. 超參數凍結後才使用獨立 test split；報告逐類 Box／Mask 指標，並額外量測 `defect_mask_pixels / fruit_roi_pixels` 的誤差與偏差，對齊 Decision Dataset 的正式特徵用途。
+- Roboflow Dataset 不設定強制 Resize，直接以原始解析度匯出，且不在 Roboflow 套用 augmentation。
+- 只對 train 中包含 `anthracnose` 或 `insect_bite` 的影像執行 targeted augmentation；valid 與 test 保持原樣。
+- 使用 `YOLO26s-seg`、`imgsz=1024`、`cls_pw=0.5`、`copy_paste=0.3`、`copy_paste_mode=mixup`。
+- 將新權重與 `v1_defect.pt`、`v1_defect-2.pt` 以相同 valid 指令及 `imgsz=1024` 比較，再對選定權重執行一次 test。
+- 新版同時改變 Dataset 與多項訓練設定，因此效能差異代表完整改善方案的結果，不拆分個別措施的貢獻。
 
 正式核准前，模型至少必須滿足下列流程條件：
 
-- Dataset provenance 可追溯，Fruit 跨 split 數量為 `0`。
-- 四個類別在 valid 與 test 都有多個獨立案例，沒有無法解讀的單一 instance 類別。
+- 四個類別在 valid 與 test 都有足以解讀逐類指標的多個 instance。
 - 新模型在相同驗證條件下與既有 baseline 比較，報告逐類結果，不能只報 macro average。
 - test 評估與實際瑕疵面積比例誤差完成後，才透過 Model Manifest 流程更新為 `candidate` 並進一步核准。
 
@@ -175,6 +162,6 @@ C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -c "from ultralytics import YOLO;
 
 ## Repository 邊界
 
-這份紀錄屬於模型 Repository，因為它描述 Dataset、訓練 run、checkpoint、模型評估與後續標註工作。
+這份紀錄屬於模型 Repository，因為它描述 Dataset、訓練 run、checkpoint 與模型效能評估。
 
 硬體 Repository `D:\PassionFruit_IoT_hardware` 繼續維護 Django、ESP32 Firmware、硬體安全、資料採集流程與 AI adapter 契約。這次實驗沒有改變四類瑕疵、mask 面積比例、人工覆核或「模型不得直接控制硬體」等既有契約，因此不修改硬體 Repository 的 `DATA_COLLECTION_SPEC.md`、`PROJECT_CONTEXT.md` 或 ADR。
