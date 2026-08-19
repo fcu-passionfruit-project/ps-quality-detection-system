@@ -18,6 +18,7 @@ dataset/
 /datasets/
 model_record/
 /training/
+runs/
 /DecisionLayerTrain/
 /decision_datasets/
 main/model_testing_area/
