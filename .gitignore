@@ -4,6 +4,12 @@ venv/
 __pycache__/
 *.py[cod]
 *.cache
+
+# Google Drive and Windows sync metadata
+desktop.ini
+.tmp.driveupload/
+.tmp.drivedownload/
+
 /AGENTS.md
 /docs/agents/
 
@@ -12,6 +18,8 @@ dataset/
 /datasets/
 model_record/
 /training/
+/DecisionLayerTrain/
+/decision_datasets/
 main/model_testing_area/
 main/pipeline_testing/
 百香果照片集/

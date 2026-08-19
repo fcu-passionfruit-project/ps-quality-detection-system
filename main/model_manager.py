@@ -40,11 +40,14 @@ class PassionFruitModelManager:
         image,
         *,
         confidence: float | None = None,
+        imgsz: int | None = None,
     ):
         model = self.load(role, model_path)
         options = {"device": self.device, "verbose": False}
         if confidence is not None:
             options["conf"] = float(confidence)
+        if imgsz is not None:
+            options["imgsz"] = int(imgsz)
         return model.predict(source=image, **options)[0]
     def predict_batch(
         self,
@@ -53,6 +56,7 @@ class PassionFruitModelManager:
         images: list,
         *,
         confidence: float | None = None,
+        imgsz: int | None = None,
     ) -> list:
         if not images:
             return []
@@ -60,6 +64,8 @@ class PassionFruitModelManager:
         options = {"device": self.device, "verbose": False}
         if confidence is not None:
             options["conf"] = float(confidence)
+        if imgsz is not None:
+            options["imgsz"] = int(imgsz)
         results = model.predict(source=list(images), **options)
         if len(results) != len(images):
             raise RuntimeError(

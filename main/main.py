@@ -19,6 +19,7 @@ from pipeline import (
     save_validation_result,
     save_validation_result_batch,
 )
+from decision_dataset.gui import DecisionDatasetPanel
 
 
 ROLE_OPTIONS = {
@@ -124,12 +125,21 @@ class PassionFruitApp:
         batch_tab = ttk.Frame(notebook, padding=12)
         single_tab = ttk.Frame(notebook, padding=12)
         pipeline_tab = ttk.Frame(notebook, padding=12)
+        decision_tab = ttk.Frame(notebook, padding=12)
         notebook.add(batch_tab, text="1. 批次前處理")
         notebook.add(single_tab, text="2. 單模型驗證")
         notebook.add(pipeline_tab, text="3. 多模型 Pipeline")
+        notebook.add(decision_tab, text="4. 決策資料集")
         self._build_batch_tab(batch_tab)
         self._build_single_tab(single_tab)
         self._build_pipeline_tab(pipeline_tab)
+        self.decision_dataset_panel = DecisionDatasetPanel(
+            decision_tab,
+            repo_root=Path(__file__).resolve().parents[1],
+            manager=self.manager,
+            run_async=self._run_async,
+            post_ui=lambda callback: self.events.put(("callback", callback)),
+        )
 
     def _path_row(
         self,
@@ -526,6 +536,8 @@ class PassionFruitApp:
                     _, message, target = event
                     target.insert(tk.END, message + "\n")
                     target.see(tk.END)
+                elif event[0] == "callback":
+                    event[1]()
                 elif event[0] == "done":
                     self._finish_job(event[1])
                 elif event[0] == "error":

@@ -1,11 +1,10 @@
 # 即時狀況回報
-- 7/25 : 經由實測，上學期訓練的ROI模型在本次裝置化拍攝後的照片辨識上，準確度皆為0.98~1.00，因此可直接採用。
 
 # 百香果 Multi-stage Pipeline 檢測系統
 
-本 repository 是百香果專題檢測層的 GitHub 程式來源，保留 `main/` 模型檢測工具與必要執行文件。資料集、規格文件、模型及訓練產物則由團隊的 [Google Drive 共用資料夾](https://drive.google.com/drive/folders/1USQK25FW7c0lLfCK1j9dGp9byPnZ5UZ9?usp=sharing) 管理。
+本 repository 是百香果專題檢測層的 GitHub 程式來源，保留 `main/` 模型檢測工具、可執行規格與必要文件。大型資料集、模型及訓練產物由團隊的 [Google Drive 共用資料夾](https://drive.google.com/drive/folders/1USQK25FW7c0lLfCK1j9dGp9byPnZ5UZ9?usp=sharing) 管理。
 
-架構內容整理自 Notion 的[「檢測層－Multi-stage Pipeline 架構設計」](https://app.notion.com/p/38d2e71fbc158042bc2bc3e6e43e9bbb)，並依目前正式硬體修正：影像來源是手機相機頁在三個停止拍攝站點取得的 `img_01.jpg`、`img_02.jpg`、`img_03.jpg`，不是舊版 ESP32-CAM 六視角連拍。
+目標架構與模型分工以 Notion 的[「檢測層－Multi-stage Pipeline」](https://app.notion.com/p/38d2e71fbc158042bc2bc3e6e43e9bbb)中「Pipeline 架構與分工」為準。影像來源是手機相機頁在三個停止拍攝站點取得的 `img_01.jpg`、`img_02.jpg`、`img_03.jpg`。
 
 ## Repository 分工
 
@@ -17,7 +16,7 @@
 | 目錄 | 用途 | 主要存取位置 |
 | --- | --- | --- |
 | `datasets/` | 存放分類標籤及準備上傳 Roboflow 的資料 | Google Drive |
-| `docs/` | 存放 Agent skill、參數、定義與規格書 | Google Drive |
+| `docs/` | 存放 Agent 指引與可執行規格；大型參考資料仍放 Google Drive | GitHub／Google Drive |
 | `main/` | 模型檢測工具 | GitHub `main` 分支 |
 | `models/` | 存放訓練完成的模型；日期子目錄代表舊模型紀錄 | Google Drive |
 | `training/packages/` | 存放模型訓練使用的資料 | Google Drive |
@@ -38,40 +37,41 @@ Stage 1：YOLO Detect 定位百香果 ROI（imgsz=640）
                   v
 OpenCV：從原始高解析照片裁切 ROI + 圓形遮罩
                   |
-          +-------+-------------------+
-          |                           |
-          v                           v
-顏色 YOLO-cls                    灰階 + CLAHE
-imgsz=320                            |
-          |                           v
-          |                    皺褶 YOLO-cls
-          |                    imgsz=448
-          |                           |
-          +-------------+-------------+
-                        |
-                        v
-         局部瑕疵 multi-class YOLO Segment（規劃中）
-         炭疽病／畫圖蟲／擦傷／蟲咬，imgsz=640
-                        |
-                        v
-        彙整三站特徵、confidence 與模型版本
-                        |
-                        v
-       決策層：high / medium / low / processing
-                        |
-                        v
+                  v
+顏色 YOLO Classification（imgsz=320，三張照片 batch）
+                  |
+                  v
+灰階 + CLAHE -> 皺褶 YOLO Classification
+                  （imgsz=320，三張照片 batch）
+                  |
+                  v
+局部瑕疵 YOLO26s-seg multi-class
+炭疽病／畫圖蟲／擦傷／蟲咬（imgsz=1024，三張照片 batch）
+                  |
+                  v
+        每張照片各產生一列特徵與 confidence
+                  |
+                  v
+       XGBoost：每張照片各預測 0 / 1 / 2 / 3
+                  |
+                  v
+          同一顆果實取三張照片的最低級距
+                  |
+                  v
         Django classify_fruit -> ESP32 -> MG996R
 ```
+
+PC 推論服務啟動時載入全部模型。模型之間依顏色、皺褶、局部瑕疵的順序執行；同一個模型一次處理同一顆 Fruit 的三張照片。OpenCV 前處理可使用 multithreading，模型推論先維持序列式 batch 基準。
 
 ### Stage 1：ROI 定位
 
 - 任務：從包含軌道背景的原始照片找出百香果 bounding box。
 - 目標模型：YOLO26n Detect。
 - 輸入尺寸：`640`。
-- 目標類別：`PF`。
+- 目標類別：單一 class `PF` 或 `ROI`，兩種命名皆可。
 - 正式權重由 Google Drive 的 `models/` 管理，執行時透過 GUI 選取。
 
-Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的原始解析度照片，取得高細節 ROI，不可從已縮小的預覽圖再次裁切。每站另保存 `roi_area_ratio = bbox_width × bbox_height / (image_width × image_height)`；它代表百香果 bounding box 在該張照片中的面積比例，供 XGBoost 理解相對大小，不是平方公分或真實表面積。正式欄位為 `station_01_roi_area_ratio`、`station_02_roi_area_ratio`、`station_03_roi_area_ratio`。
+Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的原始解析度照片，取得高細節 ROI，不可從已縮小的預覽圖再次裁切。Stage 1 回傳 `roi_area_ratio = bbox_width × bbox_height / (image_width × image_height)`；寫入 Decision Dataset 時對應為 `fruit_area_ratio`。它代表百香果 bounding box 在該張照片中的面積比例，供 XGBoost 理解相對大小，不是平方公分或真實表面積。
 
 ### OpenCV 中介層
 
@@ -83,7 +83,7 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 
 ### Stage 2-1：顏色
 
-- 目標模型：YOLO26n Classification。
+- 目標模型：YOLO26s Classification。
 - 輸入尺寸：`320`。
 - 目標類別：`bad_color`、`good_color`。
 - 目前沒有隨 repository 發布、可交付硬體端的正式權重。
@@ -91,32 +91,27 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 
 ### Stage 2-2：皺褶
 
-- 目標模型：YOLO26n Classification。
-- 輸入尺寸：`448`。
+- 目標模型：YOLO26s Classification。
+- 輸入尺寸：`320`。
 - 輸入：ROI 經灰階與 CLAHE 處理後，再轉回模型可接受的三通道影像。
-- 正式目標類別：`smooth`、`wrinkle` 二分類。
+- 目標類別：`false(沒皺褶)`、`true(有皺褶)` 。
 - 目前沒有隨 repository 發布、可交付硬體端的正式權重。
 
 先前的三分類 prototype 不再作為正式規格。新模型仍必須從權重讀取 class name，類別 index 對照與驗收規格由 Google Drive 的 `docs/` 管理，不可由程式自行猜測數字語意。
 
 ### Stage 2-3：局部瑕疵
 
-正式目標為單一 multi-class YOLO26n-seg，同一次推論辨識多種局部瑕疵，並以 segmentation mask 面積量化嚴重程度。預定類別為：
+- 目標模型：YOLO26s-seg
+- 輸入尺寸：`1024`。
+- 目標類別：`anthracnose`炭疽病；`insect_track`畫圖蟲；`abrasion`擦傷；`insect_bite`蟲咬。
 
-- `anthracnose`：炭疽病。
-- `insect_track`：畫圖蟲。
-- `abrasion`：擦傷。
-- `insect_bite`：蟲咬。
-
-上述四種是同學家實地確認會遇到的局部瑕疵；猴痘、芽種不良等目前資料為零，不納入本版規劃。Roboflow 尚未完成 mask 標註與資料量驗證，因此不得固定數字 class index，也不得在文件或系統中宣稱模型已完成。四種瑕疵先集中到同一個多類別模型，避免「每個瑕疵各一個模型」造成重複 backbone、VRAM 浪費與 false positive 疊加。
-
-每站正式輸出 `station_{01|02|03}_{anthracnose|insect_track|abrasion|insect_bite}_area_ratio`，公式為 `defect_mask_pixels / fruit_roi_pixels`，共 `12` 個範圍為 `0～1` 的特徵。未偵測到瑕疵時為 `0`；ROI 或推論失敗時為 `null` 並進入人工覆核。Detect bbox 只能使用 `*_bbox_area_ratio` 作為實驗代理值，不得與正式 mask ratio 混用。現有 `metadata.csv` 有 `13` 筆炭疽 note，分布為中等 `4` 筆、加工 `9` 筆，因此炭疽病不設一票否決。
+每張照片正式輸出 `abrasion_area_ratio`、`anthracnose_area_ratio`、`insect_bite_area_ratio` 與 `insect_track_area_ratio`，公式為同類 mask 的 pixel union 除以 `fruit_roi_pixels`。重疊 pixel 只計算一次。未偵測到該瑕疵時為 `0`；ROI 或推論失敗時 CSV 留空並以 `status=error` 記錄原因。
 
 ## 推論與效能策略
 
 - PC 推論服務啟動時一次載入所有正式模型，不可每次收到三張照片才重新載入。
-- 同一顆百香果的三張照片，在同一個模型中優先使用 batch inference。
-- 不同模型先建立穩定的循序執行基準，再實測 multithreading 是否真的降低總延遲。
+- 模型之間依顏色、皺褶、局部瑕疵循序執行；同一個模型使用三張照片的 batch inference。
+- OpenCV 前處理可使用 multithreading；模型推論先建立穩定的序列式 batch 基準，再實測多模型 multithreading 是否降低總延遲。
 - PyTorch／CUDA 與 OpenCV 底層運算可能釋放 GIL，但多執行緒不保證更快，必須記錄每個模型與整條 pipeline 的耗時。
 - 暫不使用 multiprocessing 同時載入多份模型，避免重複占用 RAM／VRAM。
 - TensorRT、OpenVINO、FP16 與 INT8 屬於 pipeline 正確且準確率通過後的最佳化工作。
@@ -133,9 +128,9 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 
 目前尚未完成：
 
-- 三張照片的整顆 fruit batch pipeline。
-- 局部瑕疵正式模型。
+- 局部瑕疵正式模型及四個模型的正式 Model Bundle manifest。
 - Django adapter 與自動決策。
+- XGBoost 訓練與整顆果實最低級距彙整。
 - 自動驅動 MG996R；硬體系統目前仍保留人工分類。
 
 ## Windows 執行方式
@@ -167,6 +162,17 @@ C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m unittest discover -s main\test
 
 權重路徑由 GUI 選擇，可直接使用 Google Drive 或其本機同步位置中的 `.pt` 檔案，無須複製到固定位置。`.pt` 仍受 `.gitignore` 排除；只應載入團隊自己訓練並驗證的權重。
 
+## 決策資料集工具
+
+組員主要由 GUI 的「4. 決策資料集」分頁操作；自動化與除錯則使用單一入口 `main/decision_dataset_cli.py`。工具只產生一份含 `split` 欄位的主 CSV，不另拆 `train.csv`、`valid.csv` 與 `test.csv`。
+
+```powershell
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\decision_dataset_cli.py --help
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\decision_dataset_cli.py generate --version v001
+```
+
+操作手冊與目錄分工見 [`main/README.md`](main/README.md)；資料結構、Model Bundle、CSV schema、版本與 XGBoost feature allowlist 的正式契約見 [`docs/specs/decision-dataset-generator.md`](docs/specs/decision-dataset-generator.md)。
+
 ## YOLO 訓練工作區
 
 訓練工作區由 Google Drive 的 `training/` 管理：模型訓練使用的資料放在 `training/packages/`，YOLO 訓練結果放在 `training/runs/`。以下相對路徑假設 Google Drive 資料已同步或下載到 repository 根目錄；訓練時必須設定 `project="training/runs"`，並使用能辨識用途與版本的實驗名稱：
@@ -184,6 +190,22 @@ model.train(
 
 訓練完成並通過驗收的模型移至 Google Drive 的 `models/`；舊模型放在日期命名的子目錄中。
 
+局部瑕疵 `v1_defect` Dataset 的第 1／2 次歷史訓練設定與效能分析，見 [`docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md`](docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md)。
+
+新版局部瑕疵 Dataset 從 Roboflow 以原始解析度匯出至 `training/packages/v2_defect_raw`，不在 Roboflow 套用 preprocessing 或 augmentation。只對 train 的少數類別來源影像產生離線變化：
+
+```powershell
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s tools\augment_rare_classes.py --input training\packages\v2_defect_raw --output training\packages\v2_defect_targeted --anthracnose-copies 2 --insect-bite-copies 5 --seed 0
+```
+
+工具不修改來源 Dataset；valid 與 test 會原樣複製。新模型完成訓練後，再於 `docs/experiments/` 建立獨立實驗紀錄並加入 README 連結。
+
+targeted Dataset 完成並通過檢查後，使用固定參數訓練完整改善方案：
+
+```powershell
+yolo task=segment mode=train model=yolo26s-seg.pt data=training/packages/v2_defect_targeted/data.yaml project=training/runs/segment name=v2_defect_targeted_weighted_cp_s1024 epochs=100 imgsz=1024 batch=1 device=0 workers=8 seed=0 deterministic=True cls_pw=0.5 copy_paste=0.3 copy_paste_mode=mixup hsv_h=0.015 hsv_s=0.7 hsv_v=0.4 degrees=0.0 translate=0.1 scale=0.5 shear=0.0 perspective=0.0 flipud=0.0 fliplr=0.5 bgr=0.0 mosaic=1.0 mixup=0.0 cutmix=0.0 close_mosaic=10
+```
+
 ## 正式權重
 
 所有訓練完成的權重由 Google Drive 的 `models/` 管理，不隨 GitHub repository 發布。日期命名的子目錄保存舊模型紀錄；目前使用的模型應放在 `models/` 的主要位置，並由 GUI 選取。
@@ -198,13 +220,13 @@ model.train(
 
 ## 未來與硬體系統整合
 
-GitHub repository 的 `main/` 提供檢測實作；硬體 repository 只建立薄 Django adapter。開發期間兩個 repository 放在同一層，未來可用 editable install 連接，但目前不使用 Git submodule。
+GitHub repository 的 `main/` 提供檢測實作；硬體 repository 只建立薄 Django adapter。目前品質檢測 repository 是位於硬體 repository `external/ps-quality-detection-system/` 下的獨立 Git checkout，兩者各自有 `.git` 與 remote，不使用 Git submodule。
 
-檢測層預期回傳每站的 ROI、`roi_area_ratio`、顏色、二分類皺褶、四種局部瑕疵 mask 面積比例、confidence、耗時與模型 bundle version。所有有效果實均由 XGBoost 結合上述特徵進行四分類，不設炭疽病硬規則。模型載入失敗、找不到百香果或信心不足時，必須回傳明確原因與 `null` 特徵並保留人工覆核，不得自行猜測分類或直接控制 ESP32。
+檢測層預期回傳每張照片的 ROI、`fruit_area_ratio`、顏色、二分類皺褶、四種局部瑕疵 mask union 面積比例、confidence、耗時與 Model Bundle version。XGBoost 對每張照片進行四分類，同一顆果實的最終級距取三張照片的最低值，不設炭疽病硬規則。模型載入失敗、找不到百香果或推論失敗時，必須回傳明確原因與空白特徵並保留人工覆核，不得自行猜測分類或直接控制 ESP32。
 
 ## Git 規則
 
 - 使用 feature branch 與 pull request 協作，不直接覆蓋組員的 `main`。
-- GitHub 只提交 `main/` 模型檢測工具及必要的執行文件與相依套件。
-- `datasets/`、`docs/`、`models/`、`training/` 由 Google Drive 管理，不提交 GitHub。
+- GitHub 提交 `main/` 模型檢測工具、`docs/specs/` 可執行規格及必要的執行文件與相依套件。
+- 大型參考資料、`datasets/`、`models/`、`training/` 與 `decision_datasets/` 由 Google Drive 或本機管理，不提交 GitHub。
 - 不提交 `.venv/`、照片、cache、預測輸出、`.pt` 權重或訓練 checkpoint。
