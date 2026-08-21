@@ -190,20 +190,23 @@ model.train(
 
 訓練完成並通過驗收的模型移至 Google Drive 的 `models/`；舊模型放在日期命名的子目錄中。
 
-局部瑕疵 `v1_defect` Dataset 的第 1／2 次歷史訓練設定與效能分析，見 [`docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md`](docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md)。
+局部瑕疵模型的實驗紀錄：
 
-新版局部瑕疵 Dataset 從 Roboflow 以原始解析度匯出至 `training/packages/v2_defect_raw`，不在 Roboflow 套用 preprocessing 或 augmentation。只對 train 的少數類別來源影像產生離線變化：
+- `v1_defect` 第 1／2 次歷史 baseline：[`docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md`](docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md)
+- `v2_defect` targeted augmentation 與 v3 參數調整：[`docs/experiments/local-defect-segmentation-v2-targeted-2026-08-19.md`](docs/experiments/local-defect-segmentation-v2-targeted-2026-08-19.md)
+
+新版局部瑕疵 Dataset 從 Roboflow 以原始解析度匯出至 `training/packages/v2_defect`，不在 Roboflow 套用 preprocessing 或 augmentation。只對 train 的少數類別來源影像產生離線變化：
 
 ```powershell
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s tools\augment_rare_classes.py --input training\packages\v2_defect_raw --output training\packages\v2_defect_targeted --anthracnose-copies 2 --insect-bite-copies 5 --seed 0
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s tools\augment_rare_classes.py --input training\packages\v2_defect --output training\packages\v2_defect_argument --anthracnose-copies 2 --insect-bite-copies 5 --seed 0
 ```
 
-工具不修改來源 Dataset；valid 與 test 會原樣複製。新模型完成訓練後，再於 `docs/experiments/` 建立獨立實驗紀錄並加入 README 連結。
+工具不修改來源 Dataset；valid 與 test 會原樣複製。v2／v3 訓練結果與後續決策記錄在上述獨立實驗文件。
 
 targeted Dataset 完成並通過檢查後，使用固定參數訓練完整改善方案：
 
 ```powershell
-yolo task=segment mode=train model=yolo26s-seg.pt data=training/packages/v2_defect_targeted/data.yaml project=training/runs/segment name=v2_defect_targeted_weighted_cp_s1024 epochs=100 imgsz=1024 batch=1 device=0 workers=8 seed=0 deterministic=True cls_pw=0.5 copy_paste=0.3 copy_paste_mode=mixup hsv_h=0.015 hsv_s=0.7 hsv_v=0.4 degrees=0.0 translate=0.1 scale=0.5 shear=0.0 perspective=0.0 flipud=0.0 fliplr=0.5 bgr=0.0 mosaic=1.0 mixup=0.0 cutmix=0.0 close_mosaic=10
+yolo task=segment mode=train model=yolo26s-seg.pt data=training/packages/v2_defect_argument/data.yaml project=training/runs/segment name=v2_defect_pw050_cp03 epochs=100 imgsz=1024 batch=-1 device=0 workers=8 seed=0 deterministic=True cls_pw=0.5 copy_paste=0.3 copy_paste_mode=mixup hsv_h=0.015 hsv_s=0.7 hsv_v=0.4 degrees=0.0 translate=0.1 scale=0.5 shear=0.0 perspective=0.0 flipud=0.0 fliplr=0.5 bgr=0.0 mosaic=1.0 mixup=0.0 cutmix=0.0 close_mosaic=10
 ```
 
 ## 正式權重
