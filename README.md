@@ -162,6 +162,304 @@ C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m unittest discover -s main\test
 
 權重路徑由 GUI 選擇，可直接使用 Google Drive 或其本機同步位置中的 `.pt` 檔案，無須複製到固定位置。`.pt` 仍受 `.gitignore` 排除；只應載入團隊自己訓練並驗證的權重。
 
+## macOS / Apple Silicon 執行方式
+
+本 repository 亦可在 Apple Silicon Mac 上進行開發、模型測試與 YOLO 訓練。macOS 環境不使用 NVIDIA CUDA，而是透過 PyTorch 的 Metal Performance Shaders（MPS）使用 Apple Silicon GPU。
+
+目前已驗證的本機環境為：
+
+* macOS
+* MacBook Pro，Apple M5 Pro
+* Python `3.12.13`
+* PyTorch `2.13.0`
+* Ultralytics `8.4.122`
+* GPU backend：Apple Metal Performance Shaders（MPS）
+* Python 環境：`venv`
+* Python 安裝來源：Homebrew
+
+> 注意：repository 的 `requirements.txt` 目前固定 `ultralytics==8.4.46`，與上述 Mac 本機已驗證的 `8.4.122` 不同。此處記錄的是目前實際使用並驗證過的 Mac 開發環境，不代表 repository 的 dependency baseline 已更新。若要統一團隊使用的 Ultralytics 版本，應另外修改 `requirements.txt` 並重新完成測試，不應只因平台不同而自行變更版本。
+
+### 建立 Python 環境
+
+macOS 使用 Homebrew Python 3.12：
+
+```bash
+brew install python@3.12
+```
+
+GUI 使用 Tkinter。Homebrew 的 Python 3.12 需另外安裝對應的 Tkinter package：
+
+```bash
+brew install python-tk@3.12
+```
+
+確認 Python：
+
+```bash
+python3.12 --version
+```
+
+在 repository root 建立 virtual environment：
+
+```bash
+python3.12 -m venv .venv
+```
+
+啟用：
+
+```bash
+source .venv/bin/activate
+```
+
+確認目前使用的是 virtual environment 中的 Python：
+
+```bash
+which python
+python --version
+```
+
+更新 pip：
+
+```bash
+python -m pip install --upgrade pip
+```
+
+### 安裝 PyTorch
+
+Apple Silicon 不使用 Windows 環境中的 CUDA 12.8 PyTorch wheel。
+
+macOS 安裝 PyTorch：
+
+```bash
+python -m pip install torch torchvision
+```
+
+確認 PyTorch 與 MPS：
+
+```bash
+python -c "import torch; print('PyTorch:', torch.__version__); print('MPS available:', torch.backends.mps.is_available())"
+```
+
+Apple Silicon 環境正常時應顯示：
+
+```text
+MPS available: True
+```
+
+### 安裝 Repository Dependencies
+
+repository 的其他 Python dependency 定義於：
+
+```text
+requirements.txt
+```
+
+安裝前請注意，目前該檔案固定：
+
+```text
+ultralytics==8.4.46
+```
+
+若本機正在使用其他已驗證版本，例如 `8.4.122`，直接執行：
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+可能會將 Ultralytics 調整為 repository 固定的版本。
+
+若團隊尚未決定是否統一版本，請先確認目前環境：
+
+```bash
+python -c "import ultralytics; print(ultralytics.__version__)"
+```
+
+dependency 安裝或調整完成後可執行：
+
+```bash
+python -s -m pip check
+```
+
+### 確認 Tkinter
+
+可使用：
+
+```bash
+python -c "import tkinter; print('Tk:', tkinter.TkVersion)"
+```
+
+若出現：
+
+```text
+ModuleNotFoundError: No module named '_tkinter'
+```
+
+請確認 Homebrew 已安裝：
+
+```bash
+brew install python-tk@3.12
+```
+
+並重新建立使用同一套 Homebrew Python 3.12 的 `.venv`。
+
+### 啟動 GUI
+
+在 repository root 啟用 virtual environment：
+
+```bash
+source .venv/bin/activate
+```
+
+再執行：
+
+```bash
+python -s main/main.py
+```
+
+模型權重仍由 GUI 選擇，可直接使用 Google Drive 或其他本機同步位置內的 `.pt` 檔案，不需要複製至 repository。
+
+### 執行測試
+
+執行全部 `unittest`：
+
+```bash
+python -s -m unittest discover -s main/tests
+```
+
+dependency 有異動時另執行：
+
+```bash
+python -s -m pip check
+```
+
+### 決策資料集 CLI
+
+macOS 使用與 Windows 相同的 Python CLI，只需改用 POSIX 路徑並使用目前啟用的 virtual environment：
+
+```bash
+python -s main/decision_dataset_cli.py --help
+```
+
+例如產生 `v001`：
+
+```bash
+python -s main/decision_dataset_cli.py generate --version v001
+```
+
+詳細操作方式仍以 [`main/README.md`](main/README.md) 與 [`docs/specs/decision-dataset-generator.md`](docs/specs/decision-dataset-generator.md) 為準。
+
+### Rare-class Dataset 擴增
+
+Windows 文件中的：
+
+```powershell
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe ...
+```
+
+在 macOS 上不適用。
+
+啟用 `.venv` 後改用：
+
+```bash
+python -s tools/augment_rare_classes.py \
+  --input training/packages/v2_defect \
+  --output training/packages/v2_defect_argument \
+  --anthracnose-copies 2 \
+  --insect-bite-copies 5 \
+  --seed 0
+```
+
+Dataset 的處理規則與 Windows 相同：工具不修改來源 Dataset，`valid` 與 `test` 原樣複製。
+
+### YOLO 訓練
+
+Apple Silicon 上執行 Ultralytics YOLO 訓練時，GPU device 使用：
+
+```text
+device=mps
+```
+
+而不是 Windows / NVIDIA 環境中的：
+
+```text
+device=0
+```
+
+因此 README 內局部瑕疵模型的 Windows 訓練指令：
+
+```text
+device=0
+```
+
+在 Mac 上應改為：
+
+```text
+device=mps
+```
+
+例如相同的局部瑕疵訓練實驗，在 macOS 上可執行：
+
+```bash
+yolo task=segment mode=train \
+  model=yolo26s-seg.pt \
+  data=training/packages/v2_defect_argument/data.yaml \
+  project=training/runs/segment \
+  name=v2_defect_pw050_cp03 \
+  epochs=100 \
+  imgsz=1024 \
+  batch=-1 \
+  device=mps \
+  workers=8 \
+  seed=0 \
+  deterministic=True \
+  cls_pw=0.5 \
+  copy_paste=0.3 \
+  copy_paste_mode=mixup \
+  hsv_h=0.015 \
+  hsv_s=0.7 \
+  hsv_v=0.4 \
+  degrees=0.0 \
+  translate=0.1 \
+  scale=0.5 \
+  shear=0.0 \
+  perspective=0.0 \
+  flipud=0.0 \
+  fliplr=0.5 \
+  bgr=0.0 \
+  mosaic=1.0 \
+  mixup=0.0 \
+  cutmix=0.0 \
+  close_mosaic=10
+```
+
+除了與運算裝置直接相關的參數外，不應只因 Windows 與 macOS 平台不同，就自行改變 Dataset、augmentation、epochs、imgsz 或其他模型實驗條件，以便不同硬體上的實驗結果仍可比較。
+
+`batch` 可依不同 GPU／記憶體條件另外進行效能實驗，但調整時應留下實驗紀錄。
+
+### CUDA、MPS 與 CPU
+
+兩個開發環境目前使用不同 GPU backend：
+
+| 平台      | GPU                     | PyTorch backend | Ultralytics device    |
+| ------- | ----------------------- | --------------- | --------------------- |
+| Windows | NVIDIA GeForce RTX 3070 | CUDA            | `device=0` / `cuda:0` |
+| macOS   | Apple M5 Pro            | MPS             | `device=mps`          |
+
+因此不得將 CUDA-specific 安裝方式或 `cuda:0` 硬編碼為所有平台共同設定。
+
+若程式需要自動選擇 PyTorch device，應分別考慮：
+
+```python
+if torch.cuda.is_available():
+    device = "cuda"
+elif torch.backends.mps.is_available():
+    device = "mps"
+else:
+    device = "cpu"
+```
+
+但目前正式 GUI 是否已支援 MPS 自動選擇，仍應以 `main/model_manager.py` 的實際實作為準；README 不應在程式尚未實作前宣稱 GUI 一定會自動使用 MPS。
+
 ## 決策資料集工具
 
 組員主要由 GUI 的「4. 決策資料集」分頁操作；自動化與除錯則使用單一入口 `main/decision_dataset_cli.py`。工具只產生一份含 `split` 欄位的主 CSV，不另拆 `train.csv`、`valid.csv` 與 `test.csv`。
