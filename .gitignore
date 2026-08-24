@@ -13,6 +13,8 @@ desktop.ini
 
 /AGENTS.md
 /docs/agents/
+/docs/資料集訓練演算法/
+/模型檢測結果/
 
 # Local datasets and experiment outputs
 dataset/
