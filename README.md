@@ -404,6 +404,57 @@ yolo task=segment mode=train \
   copy_paste_mode=mixup
 ```
 
+### Experiment C：Rare-class Targeted Crop
+
+Experiment C 回到 `v19_defect_epoch200_pw050_cp01` 使用的原始 `local_defects`
+train split，每張原圖只曝光一次；唯一新增變因是以 segmentation instance 為中心的
+`anthracnose`／`insect_bite` targeted crop。它不讀取 Experiment B 的 repeated train
+list，也不修改或複製 valid／test。
+
+在 repository root、已啟用 `.venv` 後建立並驗證 Dataset：
+
+```bash
+python -s tools/generate_targeted_crops.py \
+  --dataset training/packages/local_defects \
+  --anthracnose-crops-per-instance 1 \
+  --insect-bite-crops-per-instance 3 \
+  --context-scale 4.0 \
+  --context-scale-variation 0.5 \
+  --center-jitter 0.10 \
+  --minimum-crop-size 64 \
+  --maximum-crop-fraction 0.90 \
+  --seed 0
+```
+
+工具輸出 `experiments/exp_C_targeted_crop/`、
+`experiments/train_C_targeted_crop.txt` 與 `data_exp_C.yaml`，並保存 crop／來源
+manifest、驗證報告、Dataset hash、初始權重 hash 與 Python／PyTorch／Ultralytics
+版本。既有輸出不會被默默覆蓋；需要以同一組參數重建時明確加上 `--overwrite`。
+完整資料契約見
+[`docs/specs/local-defect-targeted-crop-experiment.md`](docs/specs/local-defect-targeted-crop-experiment.md)。
+
+Dataset 驗證與 smoke test 通過後，Experiment C 的手動訓練指令為：
+
+```bash
+yolo task=segment mode=train \
+  model=yolo26s-seg.pt \
+  data=training/packages/local_defects/data_exp_C.yaml \
+  project=training/runs/segment \
+  name=v21_C_targeted_crop \
+  imgsz=1024 \
+  epochs=200 \
+  patience=50 \
+  batch=4 \
+  device=mps \
+  seed=0 \
+  deterministic=True \
+  cls_pw=0.5 \
+  copy_paste=0.1 \
+  copy_paste_mode=mixup
+```
+
+這個指令必須由開發者在確認 Dataset 統計後手動執行；Dataset generator 不會啟動訓練。
+
 ### YOLO 訓練
 
 Apple Silicon 上執行 Ultralytics YOLO 訓練時，GPU device 使用：
