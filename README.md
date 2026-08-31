@@ -371,6 +371,39 @@ python -s tools/augment_rare_classes.py \
 
 Dataset 的處理規則與 Windows 相同：工具不修改來源 Dataset，`valid` 與 `test` 原樣複製。
 
+### Experiment B：Class-aware Sampling
+
+Experiment B 只改變 `local_defects` train image 的曝光次數，不修改或複製圖片與 label，也不改變 train／valid／test split。預設規則為 `abrasion=1x`、`anthracnose=2x`、`insect_bite=4x`、`insect_track=1x`、null image `=1x`；同一張圖片含多個 class 時取最大 factor。
+
+在 repository root、已啟用 `.venv` 後產生 train image list：
+
+```bash
+python -s tools/generate_class_aware_train_list.py \
+  --dataset training/packages/local_defects
+```
+
+預設輸出為 `training/packages/local_defects/experiments/train_B_class_aware.txt`。清單可搭配不覆寫正式設定的 `training/packages/local_defects/data_exp_B.yaml` 使用；該 YAML 的 valid、test、class 數量與 class names 和原始 `data.yaml` 相同。
+
+正式訓練命令如下；產生清單不會自動啟動訓練：
+
+```bash
+yolo task=segment mode=train \
+  model=yolo26s-seg.pt \
+  data=training/packages/local_defects/data_exp_B.yaml \
+  project=training/runs/segment \
+  name=v20_B_class_aware \
+  imgsz=1024 \
+  epochs=200 \
+  patience=50 \
+  batch=4 \
+  device=mps \
+  seed=0 \
+  deterministic=True \
+  cls_pw=0.5 \
+  copy_paste=0.1 \
+  copy_paste_mode=mixup
+```
+
 ### YOLO 訓練
 
 Apple Silicon 上執行 Ultralytics YOLO 訓練時，GPU device 使用：
