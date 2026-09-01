@@ -136,6 +136,67 @@ class TargetedCropTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "介於 0 到 1"):
                 generate_targeted_crops(dataset=invalid, weight=weight, minimum_crop_size=20)
 
+    def test_experiment_d_replays_c_random_realization_without_rng_cascade(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dataset = root / "local_defects"
+            self._make_dataset(dataset)
+            weight = root / "yolo26s-seg.pt"
+            weight.write_bytes(b"paired initial weight")
+            generate_targeted_crops(
+                dataset=dataset,
+                weight=weight,
+                minimum_crop_size=20,
+                seed=0,
+            )
+
+            report = generate_targeted_crops(
+                dataset=dataset,
+                weight=weight,
+                minimum_crop_size=20,
+                context_scale=6.0,
+                seed=0,
+                experiment="D",
+                paired_reference_dir=Path("experiments/exp_C_targeted_crop"),
+                enforce_experiment_d_contract=False,
+            )
+
+            output = dataset / "experiments/exp_D_context6"
+            replay = json.loads(
+                (output / "experiment_c_replay_report.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            audit = json.loads(
+                (output / "experiment_c_vs_d_audit.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            with (output / "paired_parameters.csv").open(
+                encoding="utf-8", newline=""
+            ) as stream:
+                paired = list(csv.DictReader(stream))
+            self.assertEqual(report["status"], "PASS")
+            self.assertEqual(replay["record_sequence_same"], 4)
+            self.assertEqual(replay["crop_rectangles_same"], 4)
+            self.assertEqual(replay["generated_image_geometry_and_pixels_same"], 4)
+            self.assertEqual(replay["labels_same"], 4)
+            self.assertEqual(len(paired), 4)
+            self.assertEqual(audit["status"], "PASS")
+            self.assertEqual(
+                audit["duplicates"]["duplicate_rectangle_extra_records"], 0
+            )
+            self.assertEqual(
+                audit["duplicates"]["exact_duplicate_image_extra_records"], 0
+            )
+            self.assertEqual(
+                audit["random_pairing"]["context_variation_paired"]
+                + audit["random_pairing"]["records_unable_to_remain_fully_paired"],
+                4,
+            )
+            self.assertIn("experiment_d", report["statistics"])
+            self.assertIn("crop_exposure", report)
+
     @staticmethod
     def _make_dataset(root: Path) -> None:
         for split in ("train", "valid", "test"):

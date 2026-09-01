@@ -1,4 +1,4 @@
-# Experiment C：Rare-class Targeted Crop 規格
+# Experiment C／D：Rare-class Targeted Crop 規格
 
 ## 實驗邊界
 
@@ -74,3 +74,66 @@ Experiment C training-input Dataset hash、`yolo26s-seg.pt` SHA-256、seed、完
 `epochs=200`、`patience=50`、`batch=4`、`device=mps`、`seed=0`、
 `deterministic=True`、`cls_pw=0.5`、`copy_paste=0.1`、
 `copy_paste_mode=mixup`。run 必須寫入 `training/runs/segment/v21_C_targeted_crop`。
+
+## Experiment D：Paired Context Scale
+
+Experiment D 使用 Experiment C 現存 artifacts 作為 pairing ground truth。原始 train
+images、target instance sequence、target repetition count、valid／test、label policy 與
+training settings 全部不變；唯一主動修改的 Dataset generation 參數是 nominal
+`context_scale=4.0` 改為 `6.0`。run 名稱固定為 `v22_D_context6`，Dataset 輸出不得覆寫
+Experiment C。
+
+Experiment D 固定的 target contract 是：
+
+```text
+crop target records = 132
+unique target instances = 80
+anthracnose = 54 unique targets / 54 target crop records
+insect_bite = 26 unique targets / 78 target crop records
+```
+
+`target crop records` 與 `total label exposure` 是不同指標。較大 field-of-view 自然納入
+的 neighboring annotations 必須依既有 clipping 規則完整保留；不得刪除合法 labels、
+只保留 target、修改 target selection 或調整 crop count 以強制維持 Experiment C 的
+total exposure。
+
+### Stochastic replay 與 pairing
+
+產生 D 前必須以 C 的 generator 參數與 global `seed=0` deterministic replay 現存 C，並
+逐筆驗證 132/132 target sequence、crop rectangle、image pixels／geometry 與 label bytes。
+任何一項無法完整重現時停止，不得建立正式 D。
+
+每筆 D record 的第一個 attempt 必須重用對應 C record 的：
+
+- sampled context variation delta；
+- jitter X／Y 的 normalized underlying realization。
+
+D 不複製 C coordinates；它以 `6.0 + variation_delta` 和相同 normalized jitter，重新走
+既有 crop geometry、boundary handling 與 polygon clipping。若第一個 D rectangle 與同一
+target 先前 repeat 重複，retry stream 必須由 global seed、stable target record ID 與 retry
+index 導出，避免改變後續 records。retry 必須記錄 record、原因及最終 pairing 差異。
+
+### Experiment D artifacts 與 validation
+
+```text
+training/packages/local_defects/
+├── data_exp_D.yaml
+└── experiments/
+    ├── train_D_context6.txt
+    └── exp_D_context6/
+        ├── images/
+        ├── labels/
+        ├── manifest.csv
+        ├── paired_parameters.csv
+        ├── experiment_c_replay_report.json
+        ├── experiment_c_vs_d_audit.json
+        ├── source_splits_manifest.csv
+        ├── validation_report.json
+        └── reproducibility.json
+```
+
+validation 必須分開報告 target records、unique targets、generated-crop total label
+instances、neighboring instances 及整體 train exposure。另須報告 paired scale／jitter
+數量、retry、boundary／clamp、duplicate source rectangle 與 exact duplicate generated
+image。必要 Dataset 結構為 433 original train images、132 crops、565 train entries；
+valid／test 與 Experiment C 的 source hashes 必須完全相同。

@@ -455,6 +455,60 @@ yolo task=segment mode=train \
 
 這個指令必須由開發者在確認 Dataset 統計後手動執行；Dataset generator 不會啟動訓練。
 
+### Experiment D：Paired Targeted-crop Context Scale
+
+Experiment D 沿用 Experiment C 的 132 個 target crop records，只把 nominal
+`context_scale` 從 `4.0` 改為 `6.0`。產生前會先 deterministic replay 現存 Experiment C；
+D 每筆第一個 attempt 重用 C 的 context variation delta 與 normalized jitter realization。
+若 rectangle 去重需要 retry，該 retry 使用 record-local deterministic stream，不會使後續
+records 的 random realization 發散。
+
+在 repository root、已啟用 `.venv` 後建立 paired Dataset：
+
+```bash
+python -s tools/generate_targeted_crops.py \
+  --experiment D \
+  --dataset training/packages/local_defects \
+  --paired-reference-dir experiments/exp_C_targeted_crop \
+  --anthracnose-crops-per-instance 1 \
+  --insect-bite-crops-per-instance 3 \
+  --context-scale 6.0 \
+  --context-scale-variation 0.5 \
+  --center-jitter 0.10 \
+  --minimum-crop-size 64 \
+  --maximum-crop-fraction 0.90 \
+  --seed 0
+```
+
+輸出為 `experiments/exp_D_context6/`、`experiments/train_D_context6.txt` 與
+`data_exp_D.yaml`。報告會把固定的 target exposure 與因 field-of-view 變大而改變的 total
+label exposure 分開；neighboring valid annotations 不會被刪除。完整 replay、pairing 與
+validation 契約見
+[`docs/specs/local-defect-targeted-crop-experiment.md`](docs/specs/local-defect-targeted-crop-experiment.md)。
+
+Dataset validation 通過後，Experiment D 的手動訓練指令為：
+
+```bash
+yolo task=segment mode=train \
+  model=yolo26s-seg.pt \
+  data=training/packages/local_defects/data_exp_D.yaml \
+  project=training/runs/segment \
+  name=v22_D_context6 \
+  imgsz=1024 \
+  epochs=200 \
+  patience=50 \
+  batch=4 \
+  device=mps \
+  seed=0 \
+  deterministic=True \
+  cls_pw=0.5 \
+  copy_paste=0.1 \
+  copy_paste_mode=mixup \
+  optimizer=auto
+```
+
+此命令只由開發者手動執行；Dataset generator 不會啟動訓練。
+
 ### YOLO 訓練
 
 Apple Silicon 上執行 Ultralytics YOLO 訓練時，GPU device 使用：
