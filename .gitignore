@@ -16,6 +16,8 @@ desktop.ini
 /docs/資料集訓練演算法/
 /模型檢測結果/
 
+tools/YOLO-26-CAM-main
+
 # Local datasets and experiment outputs
 dataset/
 /datasets/
