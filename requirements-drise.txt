@@ -1,0 +1,9 @@
+# Microsoft currently pins matplotlib<3.7, which conflicts with this project's
+# NumPy 2.x / Matplotlib 3.11 environment. Install this optional file with
+# --no-deps as documented in README; runtime prerequisites come from the base
+# environment plus the two explicit imports below.
+vision-explanation-methods==0.1.1
+pandas==2.3.2
+pytz==2026.3.post1
+tqdm==4.67.1
+tzdata==2026.3

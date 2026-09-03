@@ -523,7 +523,7 @@ yolo task=segment mode=train \
 python -s tools/yolo26_cam_test.py \
   --model training/runs/segment/v22_D_context6/weights/best.pt \
   --image test.jpg \
-  --output runs/cam/v22 \
+  --output outputs/cam/v22 \
   --imgsz 1024 \
   --device cpu \
   --layer-index -3 \
@@ -548,6 +548,46 @@ transformer attention，也不是 class-specific Grad-CAM，不能解讀為「�
 class 時所看的地方」。SVD singular vector 有正負號不確定性；工具保留第三方正式結果，
 另將兩側 polarity 與 absolute magnitude 標為 diagnostic，不會用 `1-cam` 人為反相。
 完整契約見 [`docs/specs/yolo26-eigencam-test.md`](docs/specs/yolo26-eigencam-test.md)。
+
+### YOLO26 Segmentation 單一 Instance D-RISE
+
+`tools/yolo26_drise.py` 使用 Microsoft `vision-explanation-methods` 的 D-RISE random-mask
+primitives，針對原始 YOLO26s-seg inference 中指定的一個 instance 產生 black-box
+saliency map。它以 `same class × mask IoU × masked candidate confidence` 追蹤 target；
+同類別有多個 instances 時，mask IoU 優先於 confidence，因此不會只依 class 或最高
+confidence 任選另一個瑕疵。完整契約見
+[`docs/specs/yolo26-drise.md`](docs/specs/yolo26-drise.md)。
+
+Microsoft package `0.1.1` 仍宣告 `matplotlib<3.7`，與本專案 NumPy 2.x／Matplotlib 3.11
+環境不相容。為保留現有 Python、PyTorch、Ultralytics 與視覺化環境，D-RISE 相依套件
+獨立列在 `requirements-drise.txt`，使用 `--no-deps` 安裝；不得執行參考專案的
+`env_setup.sh`：
+
+```bash
+python -s -m pip install --no-deps -r requirements-drise.txt
+```
+
+在 repository root 執行：
+
+```bash
+python -s tools/yolo26_drise.py \
+  --model training/runs/segment/v22_D_context6/weights/best.pt \
+  --source test.jpg \
+  --target-index 1 \
+  --device mps \
+  --imgsz 1024 \
+  --conf 0.25 \
+  --num-masks 1000 \
+  --mask-res 16 \
+  --seed 0 \
+  --save-debug-masks 10 \
+  --output outputs/drise
+```
+
+每次會在 output root 建立獨立 timestamped 目錄。核心輸出包含完整 prediction、target
+instance 與 target mask、normalize 前的 `drise_raw.npy`、JET heatmap、overlay 與完整
+metadata。JET 固定藍色代表低貢獻、紅色代表對指定 instance 的高貢獻。可先以
+`--num-masks 10` 到 `25` 做 smoke test；這不代表正式 D-RISE 圖品質。
 
 ### YOLO 訓練
 

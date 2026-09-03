@@ -24,6 +24,7 @@ dataset/
 model_record/
 /training/
 runs/
+outputs/
 /DecisionLayerTrain/
 /decision_datasets/
 main/model_testing_area/
