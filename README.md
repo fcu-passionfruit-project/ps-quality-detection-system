@@ -509,6 +509,46 @@ yolo task=segment mode=train \
 
 此命令只由開發者手動執行；Dataset generator 不會啟動訓練。
 
+### YOLO26 Segmentation EigenCAM 測試
+
+`tools/yolo26_cam_test.py` 可對自訓 YOLO26 segmentation 權重產生正常 segmentation
+預測與 EigenCAM 空間熱力圖。第三方 `YOLO-26-CAM` 專案需放在 `tools/YOLO-26-CAM/`；
+工具也支援 GitHub ZIP 解壓後的 `tools/YOLO-26-CAM-main/` 名稱，路徑會相對於程式檔案
+解析，不受執行時 working directory 影響。EigenCAM 需要的 `ttach` 已列入
+`requirements.txt`，`torchvision` 則依前述 PyTorch 平台安裝方式配套安裝。
+
+在 repository root、已啟用環境後執行：
+
+```bash
+python -s tools/yolo26_cam_test.py \
+  --model training/runs/segment/v22_D_context6/weights/best.pt \
+  --image test.jpg \
+  --output runs/cam/v22 \
+  --imgsz 1024 \
+  --device cpu \
+  --layer-index -3 \
+  --conf 0.25
+```
+
+預設使用 `imgsz=1024`、`device=cpu`、`layer-index=-3` 與 `conf=0.25`。`-3` 是
+YOLO-26-CAM 官方 YOLO26 segmentation notebook 的參考 layer，不保證每份自訓架構都
+代表相同 module；程式會印出實際 layer index 與 type，並允許用 `--layer-index` 測試
+其他 layer。MPS 必須明確指定 `--device mps`；遇到不支援的 hook 或 operator 時會停止
+並提示改用 CPU，不會靜默回退。
+
+工具保留原圖比例，將 OpenCV BGR `uint8` 交給 Ultralytics 進行 letterbox、BGR→RGB、
+CHW、float 與 `/255` preprocessing。所有 CAM visualization 都固定 `0=low`、`1=high`：
+灰階為黑到白，JET 為藍到紅，並附明確 colorbar。除了原圖、正式 CAM、疊圖、prediction
+與 comparison，工具也保存 normalized／signed raw NumPy data、positive／negative／
+absolute polarity diagnostics、gray／JET／TURBO 三種顯示、argmax marker，以及 high／low
+CAM 各 10% pixels 的固定中性灰 occlusion comparison 與 JSON metrics。
+
+EigenCAM 顯示的是指定 target layer 的 spatial activation／saliency response，不是
+transformer attention，也不是 class-specific Grad-CAM，不能解讀為「模型判斷某個瑕疵
+class 時所看的地方」。SVD singular vector 有正負號不確定性；工具保留第三方正式結果，
+另將兩側 polarity 與 absolute magnitude 標為 diagnostic，不會用 `1-cam` 人為反相。
+完整契約見 [`docs/specs/yolo26-eigencam-test.md`](docs/specs/yolo26-eigencam-test.md)。
+
 ### YOLO 訓練
 
 Apple Silicon 上執行 Ultralytics YOLO 訓練時，GPU device 使用：
