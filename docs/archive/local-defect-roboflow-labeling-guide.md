@@ -1,3 +1,7 @@
+
+
+# 注意：此文件只對應 `single_class_per_image_dataset` ，不得用來描述 `local_defects`
+
 # 局部瑕疵 Roboflow 分開標註指南
 
 ## 這次要做什麼

@@ -133,6 +133,23 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 - XGBoost 訓練與整顆果實最低級距彙整。
 - 自動驅動 MG996R；硬體系統目前仍保留人工分類。
 
+## Experiment D 瑕疵面積精度評估
+
+`tools/evaluate_experiment_d_area.py` 以固定 validation/test split 比較 D0/D1/D2 的
+class-level union-mask 面積。它只在 validation 選 confidence threshold，再將鎖定設定套用
+到 test；不修改 Dataset、權重、training run 或正式 inference pipeline。預設完整執行：
+
+```bash
+python -s tools/evaluate_experiment_d_area.py
+```
+
+若推論中斷，可對同一輸出目錄加 `--resume`，重用已完整寫入的 prediction cache。工具預設
+使用 `imgsz=1024`、NMS IoU `0.70`、`max_det=300`，threshold sweep 為
+`0.050..0.500`、step `0.025`。`local_defects` 已是 ROI-preprocessed Dataset；工具不重跑
+Stage 1，而是重用 `main/image_processing.py` 的 `mask_scale=1.01` ellipse binary mask，將
+GT/prediction union 裁到相同座標後，以 valid ROI pixels 作 denominator。ROI mask 只由既有
+幾何規則建立，不使用影像 brightness threshold。
+
 ## Windows 執行方式
 
 本 repository 與硬體／Django 共用 `PF` Conda 環境。既有環境已包含 CUDA 版 PyTorch，日常安裝只需同步本 Repository 的直接依賴：
