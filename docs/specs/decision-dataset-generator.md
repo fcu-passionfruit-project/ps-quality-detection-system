@@ -99,4 +99,4 @@ decision_datasets/v001/
 3. 同一顆果實的三張照片以 batch inference 執行。
 4. 同類瑕疵重疊 mask 採 union，無瑕疵與推論失敗可明確區分。
 5. CSV 可續跑、單張重跑、整顆重跑、錯誤重試、照片替換與跨版本複製 grade。
-6. 測試須在 `PF` Conda 環境使用 `python -s -m unittest discover -s main\tests` 通過。
+6. 測試須在 `PF` Conda 環境使用 `python -s -m unittest discover -s tests -t .` 通過。

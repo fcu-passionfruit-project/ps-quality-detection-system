@@ -2,7 +2,7 @@
 
 ## 用途與解讀邊界
 
-`tools/yolo26_cam_test.py` 用於觀察自訓 YOLO26 segmentation 模型某個 target layer
+`passionfruit/explainability/eigencam.py` 用於觀察自訓 YOLO26 segmentation 模型某個 target layer
 對單張輸入影像產生的 EigenCAM spatial activation／saliency response。EigenCAM 以
 activation 的第一主成分產生空間圖，不是 transformer attention，也不是 class-specific
 Grad-CAM；輸出不得被描述成模型判斷某一瑕疵 class 時專門查看的位置。
@@ -19,9 +19,8 @@ Grad-CAM；輸出不得被描述成模型判斷某一瑕疵 class 時專門查�
 - `--conf` 預設 `0.25`，必須介於 `0` 到 `1`，控制正常 YOLO prediction 的
   postprocessing；它不會使 class-agnostic EigenCAM 變成 class-specific。
 
-第三方 package 必須直接從相對於工具檔案的 `tools/YOLO-26-CAM/yolo_cam` 載入；為相容
-GitHub ZIP 的預設目錄名稱，也接受 `tools/YOLO-26-CAM-main/yolo_cam`。不得依賴目前
-working directory，也不得複製或修改第三方原始碼。
+CAM package 使用專案內的 `passionfruit/third_party/yolo_cam/`，以完整套件路徑載入。
+不搜尋外部 checkout、不修改 `sys.path`。搬移只調整匯入，保留 CAM 演算法；來源與授權狀態見該目錄 README。
 
 ## Preprocessing 與色彩契約
 

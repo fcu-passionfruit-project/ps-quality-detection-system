@@ -17,6 +17,7 @@ desktop.ini
 /模型檢測結果/
 
 tools/YOLO-26-CAM-main
+tools/YOLO-26-CAM/
 
 # Local datasets and experiment outputs
 dataset/

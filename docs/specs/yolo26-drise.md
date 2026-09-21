@@ -2,7 +2,7 @@
 
 ## 解釋目標與邊界
 
-`tools/yolo26_drise.py` 回答「輸入影像哪些 pixels 對原始推論中指定的單一
+`passionfruit/explainability/drise.py` 回答「輸入影像哪些 pixels 對原始推論中指定的單一
 segmentation instance 有較大貢獻」。它是以隨機遮蔽做 black-box perturbation 的
 D-RISE，不是 feature activation、EigenCAM 或 Grad-CAM。
 

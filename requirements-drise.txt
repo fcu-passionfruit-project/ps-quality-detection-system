@@ -3,7 +3,8 @@
 # --no-deps as documented in README; runtime prerequisites come from the base
 # environment plus the two explicit imports below.
 vision-explanation-methods==0.1.1
-pandas==2.3.2
+pandas==2.3.2; python_version < "3.14"
+pandas==3.0.6; python_version >= "3.14"
 pytz==2026.3.post1
 tqdm==4.67.1
 tzdata==2026.3
