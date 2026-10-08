@@ -1,8 +1,26 @@
-# 即時狀況回報
-
 # 百香果 Multi-stage Pipeline 檢測系統
 
-本 repository 是百香果專題檢測層的 GitHub 程式來源，保留 `main/` 模型檢測工具、可執行規格與必要文件。大型資料集、模型及訓練產物由團隊的 [Google Drive 共用資料夾](https://drive.google.com/drive/folders/1USQK25FW7c0lLfCK1j9dGp9byPnZ5UZ9?usp=sharing) 管理。
+## 從這裡開始
+
+所有指令在專案根目錄、已啟用 `PF` 或相容環境後執行，不需安裝本專案為套件。
+
+| 我要做什麼 | 使用哪個入口 |
+| --- | --- |
+| 開啟影像前處理、模型驗證與 Pipeline GUI | `python -s -m apps.inspection_gui` |
+| 整理決策資料集、維護 Manifest、產生 CSV | `python -s -m apps.decision_dataset_cli --help` |
+| 調整訓練影像曝光次數 | `python -s -m passionfruit.data_preparation.generate_class_aware_train_list --help` |
+| 建立局部瑕疵裁切資料 | `python -s -m passionfruit.data_preparation.generate_targeted_crops --help` |
+| 比較 v19／v20／v21 實驗 | `python -s -m passionfruit.evaluation.analyze_targeted_crop_experiment --help` |
+| 比較 Experiment D 瑕疵面積精度 | `python -s -m passionfruit.evaluation.evaluate_experiment_d_area --help` |
+| 查看 EigenCAM 熱力圖 | `python -s -m passionfruit.explainability.eigencam --help` |
+| 查看 D-RISE 熱力圖 | `python -s -m passionfruit.explainability.drise --help` |
+| 檢查程式正確性 | `python -s -m unittest discover -s tests -t .` |
+
+完整用途、輸入輸出、依賴與舊路徑對照見[程式導覽](docs/code-guide.md)，GUI 與決策資料集操作見[應用程式手冊](apps/README.md)。
+
+`tests/` 保存自動化測試；`training/runs/` 保存訓練成果；`training/test/` 保存模型測試輸出。後兩者由 Google Drive 管理，Git 不會同步權重。
+
+本 repository 是百香果專題檢測層的 GitHub 程式來源，保留 `apps/` 與 `passionfruit/` 模型檢測工具、可執行規格與必要文件。大型資料集、模型及訓練產物由團隊的 [Google Drive 共用資料夾](https://drive.google.com/drive/folders/1USQK25FW7c0lLfCK1j9dGp9byPnZ5UZ9?usp=sharing) 管理。
 
 目標架構與模型分工以 Notion 的[「檢測層－Multi-stage Pipeline」](https://app.notion.com/p/38d2e71fbc158042bc2bc3e6e43e9bbb)中「Pipeline 架構與分工」為準。影像來源是手機相機頁在三個停止拍攝站點取得的 `img_01.jpg`、`img_02.jpg`、`img_03.jpg`。
 
@@ -10,19 +28,19 @@
 
 專案有兩個主要存取位置：
 
-- [GitHub repository](https://github.com/fcu-passionfruit-project/ps-quality-detection-system)：管理 `main/` 模型檢測工具、執行說明及必要相依套件。
+- [GitHub repository](https://github.com/fcu-passionfruit-project/ps-quality-detection-system)：管理 `apps/` 與 `passionfruit/` 模型檢測工具、執行說明及必要相依套件。
 - [Google Drive 共用資料夾](https://drive.google.com/drive/folders/1USQK25FW7c0lLfCK1j9dGp9byPnZ5UZ9?usp=sharing)：供組員共同存取與修改資料、規格、模型及訓練產物。
 
 | 目錄 | 用途 | 主要存取位置 |
 | --- | --- | --- |
 | `datasets/` | 存放分類標籤及準備上傳 Roboflow 的資料 | Google Drive |
 | `docs/` | 存放 Agent 指引與可執行規格；大型參考資料仍放 Google Drive | GitHub／Google Drive |
-| `main/` | 模型檢測工具 | GitHub `main` 分支 |
+| `apps/` 與 `passionfruit/` | 模型檢測工具 | GitHub `main` 分支 |
 | `models/` | 存放訓練完成的模型；日期子目錄代表舊模型紀錄 | Google Drive |
 | `training/packages/` | 存放模型訓練使用的資料 | Google Drive |
 | `training/runs/` | 存放模型訓練結果 | Google Drive |
 
-`main/` 提供不依賴 Django 的獨立推論工具，供團隊先驗證模型，再逐步整理成硬體系統可呼叫的介面。
+`apps/` 與 `passionfruit/` 提供不依賴 Django 的獨立推論工具，供團隊先驗證模型，再逐步整理成硬體系統可呼叫的介面。
 
 硬體與資料採集系統位於 [`Eten0721/PassionFruit_IoT_hardware`](https://github.com/Eten0721/PassionFruit_IoT_hardware)，負責 Django、手機相機、Dashboard、ESP32、三個 SG90 閘門與 MG996R。模型不得直接控制 GPIO；AI 最終結果必須交回 Django 的 `classify_fruit` 流程。
 
@@ -79,7 +97,7 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 - 套用圓形遮罩，降低軌道、反光與雜物對後續分類的干擾。
 - 皺褶分支再轉為灰階並套用 CLAHE，提高表皮線條與陰影的局部對比。
 
-目前程式位於 `main/image_processing.py`。
+目前程式位於 `passionfruit/inference/image_processing.py`。
 
 ### Stage 2-1：顏色
 
@@ -118,13 +136,14 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 
 ## 目前已實作範圍
 
-`main/` 是獨立於 Django 的 Tkinter 驗證工具，正式程式集中於此，提供三個分頁：
+`apps/` 與 `passionfruit/` 是獨立於 Django 的 Tkinter 驗證工具，GUI 位於 `apps/inspection_gui.py`，核心邏輯依用途放在 `passionfruit/`，提供四個分頁：
 
 1. 批次前處理：遞迴產生彩色 ROI，或供皺褶模型使用的灰階 CLAHE ROI。
 2. 單模型驗證：可直接測試模型就緒影像，或以輔助 ROI 模型處理完整原圖。
 3. 多模型 Pipeline：依序驗證 ROI、顏色、皺褶及可選的局部瑕疵模型。
+4. 決策資料集：整理資料結構、維護 Model Manifest 與產生特徵 CSV。
 
-所有流程共用 `main/image_processing.py` 的參數與影像處理；每張照片只採用最高 confidence 的 ROI。推論工作在背景執行緒執行，但不同模型維持循序推論基準。驗證結果會保存 JSON、ROI 標註圖與可用的階段影像。
+所有流程共用 `passionfruit/inference/image_processing.py` 的參數與影像處理；每張照片只採用最高 confidence 的 ROI。推論工作在背景執行緒執行，但不同模型維持循序推論基準。驗證結果會保存 JSON、ROI 標註圖與可用的階段影像。
 
 目前尚未完成：
 
@@ -135,18 +154,18 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 
 ## Experiment D 瑕疵面積精度評估
 
-`tools/evaluate_experiment_d_area.py` 以固定 validation/test split 比較 D0/D1/D2 的
+`passionfruit/evaluation/evaluate_experiment_d_area.py` 以固定 validation/test split 比較 D0/D1/D2 的
 class-level union-mask 面積。它只在 validation 選 confidence threshold，再將鎖定設定套用
 到 test；不修改 Dataset、權重、training run 或正式 inference pipeline。預設完整執行：
 
 ```bash
-python -s tools/evaluate_experiment_d_area.py
+python -s -m passionfruit.evaluation.evaluate_experiment_d_area
 ```
 
 若推論中斷，可對同一輸出目錄加 `--resume`，重用已完整寫入的 prediction cache。工具預設
 使用 `imgsz=1024`、NMS IoU `0.70`、`max_det=300`，threshold sweep 為
 `0.050..0.500`、step `0.025`。`local_defects` 已是 ROI-preprocessed Dataset；工具不重跑
-Stage 1，而是重用 `main/image_processing.py` 的 `mask_scale=1.01` ellipse binary mask，將
+Stage 1，而是重用 `passionfruit/inference/image_processing.py` 的 `mask_scale=1.01` ellipse binary mask，將
 GT/prediction union 裁到相同座標後，以 valid ROI pixels 作 denominator。ROI mask 只由既有
 幾何規則建立，不使用影像 brightness threshold。
 
@@ -156,7 +175,7 @@ GT/prediction union 裁到相同座標後，以 valid ROI pixels 作 denominator
 
 ```powershell
 C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m pip install -r requirements.txt
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\main.py
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m apps.inspection_gui
 ```
 
 全新重建 `PF` 時固定使用 Python `3.14.4`，並從 PyTorch 官方 CUDA `12.8` index 安裝 GPU wheel：
@@ -174,7 +193,7 @@ python -s -m pip check
 目前基準環境為 Python `3.14.4`、Ultralytics `8.4.46`、PyTorch `2.11.0+cu128`、CUDA `12.8` 與 NVIDIA GeForce RTX 3070。程式會優先使用 `cuda:0`，無 CUDA 時才回退 CPU。
 
 ```powershell
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m unittest discover -s main\tests
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m unittest discover -s tests -t .
 ```
 
 權重路徑由 GUI 選擇，可直接使用 Google Drive 或其本機同步位置中的 `.pt` 檔案，無須複製到固定位置。`.pt` 仍受 `.gitignore` 排除；只應載入團隊自己訓練並驗證的權重。
@@ -330,7 +349,7 @@ source .venv/bin/activate
 再執行：
 
 ```bash
-python -s main/main.py
+python -s -m apps.inspection_gui
 ```
 
 模型權重仍由 GUI 選擇，可直接使用 Google Drive 或其他本機同步位置內的 `.pt` 檔案，不需要複製至 repository。
@@ -340,7 +359,7 @@ python -s main/main.py
 執行全部 `unittest`：
 
 ```bash
-python -s -m unittest discover -s main/tests
+python -s -m unittest discover -s tests -t .
 ```
 
 dependency 有異動時另執行：
@@ -354,16 +373,16 @@ python -s -m pip check
 macOS 使用與 Windows 相同的 Python CLI，只需改用 POSIX 路徑並使用目前啟用的 virtual environment：
 
 ```bash
-python -s main/decision_dataset_cli.py --help
+python -s -m apps.decision_dataset_cli --help
 ```
 
 例如產生 `v001`：
 
 ```bash
-python -s main/decision_dataset_cli.py generate --version v001
+python -s -m apps.decision_dataset_cli generate --version v001
 ```
 
-詳細操作方式仍以 [`main/README.md`](main/README.md) 與 [`docs/specs/decision-dataset-generator.md`](docs/specs/decision-dataset-generator.md) 為準。
+詳細操作方式仍以 [`apps/README.md`](apps/README.md) 與 [`docs/specs/decision-dataset-generator.md`](docs/specs/decision-dataset-generator.md) 為準。
 
 ### Rare-class Dataset 擴增
 
@@ -375,18 +394,7 @@ C:\Users\qoqoo\anaconda3\envs\PF\python.exe ...
 
 在 macOS 上不適用。
 
-啟用 `.venv` 後改用：
-
-```bash
-python -s tools/augment_rare_classes.py \
-  --input training/packages/v2_defect \
-  --output training/packages/v2_defect_argument \
-  --anthracnose-copies 2 \
-  --insect-bite-copies 5 \
-  --seed 0
-```
-
-Dataset 的處理規則與 Windows 相同：工具不修改來源 Dataset，`valid` 與 `test` 原樣複製。
+啟用 `.venv` 後使用本文件的新模組指令。舊版 `augment_rare_classes.py` 已移除；歷史做法見實驗報告，現行資料準備工具見[程式導覽](docs/code-guide.md)。
 
 ### Experiment B：Class-aware Sampling
 
@@ -395,7 +403,7 @@ Experiment B 只改變 `local_defects` train image 的曝光次數，不修改�
 在 repository root、已啟用 `.venv` 後產生 train image list：
 
 ```bash
-python -s tools/generate_class_aware_train_list.py \
+python -s -m passionfruit.data_preparation.generate_class_aware_train_list \
   --dataset training/packages/local_defects
 ```
 
@@ -431,7 +439,7 @@ list，也不修改或複製 valid／test。
 在 repository root、已啟用 `.venv` 後建立並驗證 Dataset：
 
 ```bash
-python -s tools/generate_targeted_crops.py \
+python -s -m passionfruit.data_preparation.generate_targeted_crops \
   --dataset training/packages/local_defects \
   --anthracnose-crops-per-instance 1 \
   --insect-bite-crops-per-instance 3 \
@@ -483,7 +491,7 @@ records 的 random realization 發散。
 在 repository root、已啟用 `.venv` 後建立 paired Dataset：
 
 ```bash
-python -s tools/generate_targeted_crops.py \
+python -s -m passionfruit.data_preparation.generate_targeted_crops \
   --experiment D \
   --dataset training/packages/local_defects \
   --paired-reference-dir experiments/exp_C_targeted_crop \
@@ -528,16 +536,14 @@ yolo task=segment mode=train \
 
 ### YOLO26 Segmentation EigenCAM 測試
 
-`tools/yolo26_cam_test.py` 可對自訓 YOLO26 segmentation 權重產生正常 segmentation
-預測與 EigenCAM 空間熱力圖。第三方 `YOLO-26-CAM` 專案需放在 `tools/YOLO-26-CAM/`；
-工具也支援 GitHub ZIP 解壓後的 `tools/YOLO-26-CAM-main/` 名稱，路徑會相對於程式檔案
-解析，不受執行時 working directory 影響。EigenCAM 需要的 `ttach` 已列入
+`passionfruit/explainability/eigencam.py` 可對自訓 YOLO26 segmentation 權重產生正常 segmentation
+預測與 EigenCAM 空間熱力圖。CAM 程式隨專案保存於 `passionfruit/third_party/yolo_cam/`，直接以套件匯入，不需另行下載第三方專案。EigenCAM 需要的 `ttach` 已列入
 `requirements.txt`，`torchvision` 則依前述 PyTorch 平台安裝方式配套安裝。
 
 在 repository root、已啟用環境後執行：
 
 ```bash
-python -s tools/yolo26_cam_test.py \
+python -s -m passionfruit.explainability.eigencam \
   --model training/runs/segment/v22_D_context6/weights/best.pt \
   --image test.jpg \
   --output outputs/cam/v22 \
@@ -568,7 +574,7 @@ class 時所看的地方」。SVD singular vector 有正負號不確定性；工
 
 ### YOLO26 Segmentation 單一 Instance D-RISE
 
-`tools/yolo26_drise.py` 使用 Microsoft `vision-explanation-methods` 的 D-RISE random-mask
+`passionfruit/explainability/drise.py` 使用 Microsoft `vision-explanation-methods` 的 D-RISE random-mask
 primitives，針對原始 YOLO26s-seg inference 中指定的一個 instance 產生 black-box
 saliency map。它以 `same class × mask IoU × masked candidate confidence` 追蹤 target；
 同類別有多個 instances 時，mask IoU 優先於 confidence，因此不會只依 class 或最高
@@ -587,7 +593,7 @@ python -s -m pip install --no-deps -r requirements-drise.txt
 在 repository root 執行：
 
 ```bash
-python -s tools/yolo26_drise.py \
+python -s -m passionfruit.explainability.drise \
   --model training/runs/segment/v22_D_context6/weights/best.pt \
   --source test.jpg \
   --target-index 1 \
@@ -693,18 +699,18 @@ else:
     device = "cpu"
 ```
 
-但目前正式 GUI 是否已支援 MPS 自動選擇，仍應以 `main/model_manager.py` 的實際實作為準；README 不應在程式尚未實作前宣稱 GUI 一定會自動使用 MPS。
+但目前正式 GUI 是否已支援 MPS 自動選擇，仍應以 `passionfruit/inference/model_manager.py` 的實際實作為準；README 不應在程式尚未實作前宣稱 GUI 一定會自動使用 MPS。
 
 ## 決策資料集工具
 
-組員主要由 GUI 的「4. 決策資料集」分頁操作；自動化與除錯則使用單一入口 `main/decision_dataset_cli.py`。工具只產生一份含 `split` 欄位的主 CSV，不另拆 `train.csv`、`valid.csv` 與 `test.csv`。
+組員主要由 GUI 的「4. 決策資料集」分頁操作；自動化與除錯則使用單一入口 `apps/decision_dataset_cli.py`。工具只產生一份含 `split` 欄位的主 CSV，不另拆 `train.csv`、`valid.csv` 與 `test.csv`。
 
 ```powershell
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\decision_dataset_cli.py --help
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s main\decision_dataset_cli.py generate --version v001
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m apps.decision_dataset_cli --help
+C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s -m apps.decision_dataset_cli generate --version v001
 ```
 
-操作手冊與目錄分工見 [`main/README.md`](main/README.md)；資料結構、Model Bundle、CSV schema、版本與 XGBoost feature allowlist 的正式契約見 [`docs/specs/decision-dataset-generator.md`](docs/specs/decision-dataset-generator.md)。
+操作手冊與目錄分工見 [`apps/README.md`](apps/README.md)；資料結構、Model Bundle、CSV schema、版本與 XGBoost feature allowlist 的正式契約見 [`docs/specs/decision-dataset-generator.md`](docs/specs/decision-dataset-generator.md)。
 
 ## YOLO 訓練工作區
 
@@ -728,13 +734,7 @@ model.train(
 - `v1_defect` 第 1／2 次歷史 baseline：[`docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md`](docs/experiments/local-defect-segmentation-v1-v2-2026-08-18.md)
 - `v2_defect` targeted augmentation 與 v3 參數調整：[`docs/experiments/local-defect-segmentation-v2-targeted-2026-08-19.md`](docs/experiments/local-defect-segmentation-v2-targeted-2026-08-19.md)
 
-新版局部瑕疵 Dataset 從 Roboflow 以原始解析度匯出至 `training/packages/v2_defect`，不在 Roboflow 套用 preprocessing 或 augmentation。只對 train 的少數類別來源影像產生離線變化：
-
-```powershell
-C:\Users\qoqoo\anaconda3\envs\PF\python.exe -s tools\augment_rare_classes.py --input training\packages\v2_defect --output training\packages\v2_defect_argument --anthracnose-copies 2 --insect-bite-copies 5 --seed 0
-```
-
-工具不修改來源 Dataset；valid 與 test 會原樣複製。v2／v3 訓練結果與後續決策記錄在上述獨立實驗文件。
+上述 v2／v3 屬歷史實驗，舊版離線擴增工具已移除。現行資料準備使用 class-aware sampling 與 targeted crops，入口見[程式導覽](docs/code-guide.md)。
 
 targeted Dataset 完成並通過檢查後，使用固定參數訓練完整改善方案：
 
@@ -756,13 +756,13 @@ yolo task=segment mode=train model=yolo26s-seg.pt data=training/packages/v2_defe
 
 ## 未來與硬體系統整合
 
-GitHub repository 的 `main/` 提供檢測實作；硬體 repository 只建立薄 Django adapter。目前品質檢測 repository 是位於硬體 repository `external/ps-quality-detection-system/` 下的獨立 Git checkout，兩者各自有 `.git` 與 remote，不使用 Git submodule。
+GitHub repository 的 `apps/` 與 `passionfruit/` 提供檢測實作；硬體 repository 只建立薄 Django adapter。目前品質檢測 repository 是位於硬體 repository `external/ps-quality-detection-system/` 下的獨立 Git checkout，兩者各自有 `.git` 與 remote，不使用 Git submodule。
 
 檢測層預期回傳每張照片的 ROI、`fruit_area_ratio`、顏色、二分類皺褶、四種局部瑕疵 mask union 面積比例、confidence、耗時與 Model Bundle version。XGBoost 對每張照片進行四分類，同一顆果實的最終級距取三張照片的最低值，不設炭疽病硬規則。模型載入失敗、找不到百香果或推論失敗時，必須回傳明確原因與空白特徵並保留人工覆核，不得自行猜測分類或直接控制 ESP32。
 
 ## Git 規則
 
 - 使用 feature branch 與 pull request 協作，不直接覆蓋組員的 `main`。
-- GitHub 提交 `main/` 模型檢測工具、`docs/specs/` 可執行規格及必要的執行文件與相依套件。
+- GitHub 提交 `apps/` 與 `passionfruit/` 模型檢測工具、`docs/specs/` 可執行規格及必要的執行文件與相依套件。
 - 大型參考資料、`datasets/`、`models/`、`training/` 與 `decision_datasets/` 由 Google Drive 或本機管理，不提交 GitHub。
 - 不提交 `.venv/`、照片、cache、預測輸出、`.pt` 權重或訓練 checkpoint。
