@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "source": "D:\\PassionFruit_IoT_hardware\\external\\ps-quality-detection-system\\training\\packages\\v2_defect_argument\\test\\images\\img_01_jpg.rf.9dfdc978a4eceb58745cc4bfe06f7f30.jpg",
+  "mode": "single_model",
+  "input_mode": "ready",
+  "role": "defect",
+  "device": "cuda:0",
+  "model_path": "D:\\PassionFruit_IoT_hardware\\external\\ps-quality-detection-system\\training\\runs\\segment\\v2_defect 訓練紀錄\\weights\\best.pt",
+  "auxiliary_roi_path": null,
+  "parameters": {
+    "confidence": 0.3,
+    "shrink_ratio": 0.0,
+    "mask_scale": 1.01,
+    "clahe_clip_limit": 2.0,
+    "clahe_tile_size": 8
+  },
+  "roi": null,
+  "model": {
+    "status": "ok",
+    "detections": [
+      {
+        "class_name": "abrasion",
+        "class_index": 0,
+        "confidence": 0.463987,
+        "mask_area_ratio": 0.01275707
+      }
+    ],
+    "area_ratios": {
+      "abrasion": 0.01275707,
+      "anthracnose": 0.0,
+      "insect_bite": 0.0,
+      "insect_track": 0.0
+    },
+    "max_confidences": {
+      "abrasion": 0.463987,
+      "anthracnose": 0.0,
+      "insect_bite": 0.0,
+      "insect_track": 0.0
+    },
+    "elapsed_ms": 120.68,
+    "reason": null
+  },
+  "reason": null,
+  "elapsed_ms": 132.67,
+  "artifacts": {
+    "original": "D:\\PassionFruit_IoT_hardware\\external\\ps-quality-detection-system\\main\\model_testing_area\\20260819_164502_574513\\original.jpg",
+    "defect_annotated": "D:\\PassionFruit_IoT_hardware\\external\\ps-quality-detection-system\\main\\model_testing_area\\20260819_164502_574513\\defect_annotated.jpg"
+  }
+}
