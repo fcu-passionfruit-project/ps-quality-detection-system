@@ -5,6 +5,7 @@ __pycache__/
 *.py[cod]
 *.cache
 .DS_Store
+*.env
 
 # Google Drive and Windows sync metadata
 desktop.ini
