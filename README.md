@@ -756,7 +756,7 @@ yolo task=segment mode=train model=yolo26s-seg.pt data=training/packages/v2_defe
 
 ## 未來與硬體系統整合
 
-GitHub repository 的 `apps/` 與 `passionfruit/` 提供檢測實作；硬體 repository 只建立薄 Django adapter。目前品質檢測 repository 是位於硬體 repository `external/ps-quality-detection-system/` 下的獨立 Git checkout，兩者各自有 `.git` 與 remote，不使用 Git submodule。
+GitHub repository 的 `apps/` 與 `passionfruit/` 提供檢測實作；硬體 repository 只建立薄 Django adapter。本機 checkout 位於 `D:\ps-quality-detection-system\`，與硬體 repository `D:\PassionFruit_IoT_hardware\` 並列、互不巢狀；兩者各自有 `.git` 與 remote，不使用 Git submodule。
 
 檢測層預期回傳每張照片的 ROI、`fruit_area_ratio`、顏色、二分類皺褶、四種局部瑕疵 mask union 面積比例、confidence、耗時與 Model Bundle version。XGBoost 對每張照片進行四分類，同一顆果實的最終級距取三張照片的最低值，不設炭疽病硬規則。模型載入失敗、找不到百香果或推論失敗時，必須回傳明確原因與空白特徵並保留人工覆核，不得自行猜測分類或直接控制 ESP32。
 
