@@ -12,6 +12,7 @@
 | Targeted crops | `passionfruit.data_preparation.generate_targeted_crops` | `--dataset`、`--weight`、`--experiment C/D`；D 使用 C 的 paired artifacts | 裁切圖與標註、train list、data YAML、manifest 及 validation report；可指定 output-dir、train-list、data-yaml |
 | v19／v20／v21 比較 | `passionfruit.evaluation.analyze_targeted_crop_experiment` | `--repo` 下既有三組 run、資料集、best.pt | `training/analysis/v19-v20-v21-targeted-crop`；以 `--output` 改位置 |
 | Experiment D 面積評估 | `passionfruit.evaluation.evaluate_experiment_d_area` | `--data`、v22／v23／v24 的 best.pt、validation/test | 預設 `analysis/experiment_d_area_accuracy_corrected_20260904`；report、CSV、圖表與 prediction cache，支援 `--resume` |
+| 視角層級瑕疵評估 | `passionfruit.evaluation.evaluate_view_level` | 必填 `--dataset`、可重複的 `--model NAME=WEIGHTS`、`--output` | 指定 output 下的 report.md、summary.csv／json 與逐張面積比例 |
 | EigenCAM | `passionfruit.explainability.eigencam` | 必填 `--model`、`--image`、`--output` | 熱力圖、遮蔽比較、NumPy 數值及 cam_metrics.json，寫入指定 output |
 | D-RISE | `passionfruit.explainability.drise` | 必填 `--model`、`--source`；依需要選 target-index／target-class | 預設 outputs/drise 下獨立執行目錄，可用 `--output` 調整；熱力圖及紀錄 |
 
@@ -76,6 +77,7 @@ python -s -m passionfruit.data_preparation.generate_class_aware_train_list --hel
 python -s -m passionfruit.data_preparation.generate_targeted_crops --help
 python -s -m passionfruit.evaluation.analyze_targeted_crop_experiment --help
 python -s -m passionfruit.evaluation.evaluate_experiment_d_area --help
+python -s -m passionfruit.evaluation.evaluate_view_level --help
 python -s -m passionfruit.explainability.eigencam --help
 python -s -m passionfruit.explainability.drise --help
 python -s -m unittest discover -s tests -t .
