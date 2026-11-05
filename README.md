@@ -12,6 +12,7 @@
 | 建立局部瑕疵裁切資料 | `python -s -m passionfruit.data_preparation.generate_targeted_crops --help` |
 | 比較 v19／v20／v21 實驗 | `python -s -m passionfruit.evaluation.analyze_targeted_crop_experiment --help` |
 | 比較 Experiment D 瑕疵面積精度 | `python -s -m passionfruit.evaluation.evaluate_experiment_d_area --help` |
+| 固定部署設定的逐類面積與 Micro Pixel P/R | `python -s -m passionfruit.evaluation.evaluate_local_defect_pixels --help` |
 | 查看 EigenCAM 熱力圖 | `python -s -m passionfruit.explainability.eigencam --help` |
 | 查看 D-RISE 熱力圖 | `python -s -m passionfruit.explainability.drise --help` |
 | 檢查程式正確性 | `python -s -m unittest discover -s tests -t .` |
@@ -153,6 +154,13 @@ Stage 1 只負責定位。裁切時必須把偵測座標換算回手機上傳的
 - 自動驅動 MG996R；硬體系統目前仍保留人工分類。
 
 ## Experiment D 瑕疵面積精度評估
+
+固定 v22 部署設定、逐類像素聯集與 Micro Pixel P/R 的新工具使用
+`passionfruit.evaluation.evaluate_local_defect_pixels`。完整指令、ROI 限制與座標處理差異見
+[評估工具手冊](passionfruit/evaluation/README.md)及[契約](docs/specs/local-defect-pixel-evaluation.md)。
+它不執行 threshold sweep，也不重用下述歷史工具直接 resize 的 prediction cache。
+`--mask-mode scale-masks` 保留舊評估；`--mask-mode django-deployed` 重現目前 Django 的直接最近鄰 resize、
+>0.5、ROI 聯集及 8 位 rounding，並直接呼叫原始 helper 驗證一致性。兩種模式只寫入新的輸出資料夾。
 
 `passionfruit/evaluation/evaluate_experiment_d_area.py` 以固定 validation/test split 比較 D0/D1/D2 的
 class-level union-mask 面積。它只在 validation 選 confidence threshold，再將鎖定設定套用
